@@ -25,13 +25,13 @@ import equinox as eqx
 from typing import Dict, Any, Optional
 from jaxtyping import Array
 
-from cnfmt.core.grid import Grid
-from cnfmt.core.weights import FMTKernels
-from cnfmt.core.densities import WeightedDensityCalculator
-from cnfmt.core.thermodynamics import BulkThermodynamics
-from cnfmt.functionals.lutsko import LutskoFunctional
-from cnfmt.functionals.potentials import GrandPotential, TestParticlePotential
-from cnfmt.solvers.minimizer import DensityMinimizer
+from core.grid import Grid
+from core.weights import FMTKernels
+from core.densities import WeightedDensityCalculator
+from core.thermodynamics import BulkThermodynamics
+from functionals.lutsko import LutskoFunctional
+from functionals.potentials import GrandPotential, TestParticlePotential
+from .minimizer import DensityMinimizer
 
 
 class TestParticleCalculator(eqx.Module):

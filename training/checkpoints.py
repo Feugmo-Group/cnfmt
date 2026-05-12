@@ -9,8 +9,8 @@ import jax
 import equinox as eqx
 import json
 from pathlib import Path
-from cnfmt.neural.network import ConditionalNetwork
-from cnfmt.training.config import TrainingConfig
+from neural.network import ConditionalNetwork
+from .config import TrainingConfig
 
 
 def save_checkpoint(network: ConditionalNetwork, config: TrainingConfig, 

@@ -17,11 +17,11 @@ import optax
 import equinox as eqx
 from typing import List, Tuple, Any, NamedTuple
 
-from cnfmt.core.grid import Grid
-from cnfmt.neural.network import ConditionalNetwork
-from cnfmt.solvers.test_particle import TestParticleCalculator
-from cnfmt.training.config import TrainingConfig
-from cnfmt.training.losses import compute_bulk_loss, compute_dft_loss
+from core.grid import Grid
+from neural.network import ConditionalNetwork
+from solvers.test_particle import TestParticleCalculator
+from .config import TrainingConfig
+from .losses import compute_bulk_loss, compute_dft_loss
 
 
 # ============================================================================

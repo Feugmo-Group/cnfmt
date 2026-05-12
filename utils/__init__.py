@@ -8,14 +8,14 @@ Plotting and analysis utilities.
 - analysis: Parameter analysis and comparison
 """
 
-from cnfmt.utils.plotting import (
+from .plotting import (
     plot_training_losses,
     plot_learned_parameters,
     plot_thermodynamics,
     plot_parameter_space,
     create_publication_figure
 )
-from cnfmt.utils.analysis import (
+from .analysis import (
     evaluate_network,
     compare_functionals,
     compute_errors

@@ -40,7 +40,7 @@ import jax.numpy as jnp
 import equinox as eqx
 from typing import Optional, Union
 from jaxtyping import Array
-from cnfmt.core.densities import WeightedDensities
+from core.densities import WeightedDensities
 
 
 class LutskoFunctional(eqx.Module):

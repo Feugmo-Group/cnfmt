@@ -8,7 +8,7 @@ Conditional neural networks for parameter prediction.
 - FeatureExtractor: Extracts local structural features from density
 """
 
-from cnfmt.neural.network import ConditionalNetwork
-from cnfmt.neural.features import FeatureExtractor
+from .network import ConditionalNetwork
+from .features import FeatureExtractor
 
 __all__ = ['ConditionalNetwork', 'FeatureExtractor']

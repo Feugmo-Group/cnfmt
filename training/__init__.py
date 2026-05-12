@@ -10,12 +10,12 @@ Training infrastructure for conditional neural functional.
 - Checkpointing: Save/load model states
 """
 
-from cnfmt.training.config import TrainingConfig
-from cnfmt.training.losses import compute_bulk_loss, compute_dft_loss
-from cnfmt.training.optimizers import (
+from .config import TrainingConfig
+from .losses import compute_bulk_loss, compute_dft_loss
+from .optimizers import (
     train_bulk_adam, train_bulk_lbfgs, train_dft_phase
 )
-from cnfmt.training.checkpoints import save_checkpoint, load_checkpoint
+from .checkpoints import save_checkpoint, load_checkpoint
 
 __all__ = [
     'TrainingConfig',

@@ -1,0 +1,222 @@
+#!/usr/bin/env python
+"""
+B4: Compute wall profiles using NN-learned A(eta), B(eta).
+
+Trains the network (Approach 1: CS EOS), then computes density profiles
+at the four benchmark packing fractions and compares to:
+  - Lutsko fixed (A=1, B=0)
+  - Gul et al. fixed (A=1.3, B=-1.0)
+  - MD data (Davidchack et al. 2016)
+
+Usage:
+    python -m cnfmt.scripts.nn_wall_profiles
+"""
+
+from pathlib import Path
+
+import jax
+import jax.numpy as jnp
+import optax
+import equinox as eqx
+import numpy as np
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+from scripts.paper_figure_style import apply_paper_style
+apply_paper_style()
+
+from solvers.fmt_1d_wbii_tensor import WallSolver, esFMT_Tensor
+from neural.network import ConditionalNetwork
+from core.thermodynamics import BulkThermodynamics as BT
+from solvers.wall_profile import MC_WALL_DATA
+
+PI = np.pi
+
+
+def train_network(n_iter=1500, lr=3e-3, seed=42):
+    """Train network on CS EOS objective (Approach 1)."""
+    print("Training network...")
+    key = jax.random.PRNGKey(seed)
+    net = ConditionalNetwork(key)
+
+    # Use cosine decay schedule for better convergence
+    schedule = optax.cosine_decay_schedule(lr, n_iter)
+    optimizer = optax.adamw(schedule)
+    opt_state = optimizer.init(eqx.filter(net, eqx.is_array))
+
+    # Extended range to cover all benchmark etas including 0.492
+    eta_train = jnp.linspace(0.05, 0.50, 20)
+
+    # Vectorized single-eta loss for use with vmap
+    def single_loss(net, eta):
+        A, B = net.from_eta(eta)
+        Z_pred = BT.Z_lutsko(eta, A, B)
+        mu_pred = BT.mu_ex_bulk_lutsko(eta, A, B)
+        Z_target = BT.Z_CS(eta)
+        mu_target = BT.mu_ex_CS(eta)
+        return (Z_pred - Z_target)**2 + 0.5 * (mu_pred - mu_target)**2
+
+    @eqx.filter_value_and_grad
+    def loss_fn(net):
+        # Use scan instead of Python loop for JIT compatibility
+        losses = jax.vmap(lambda eta: single_loss(net, eta))(eta_train)
+        return jnp.mean(losses)
+
+    # JIT the full training step
+    @eqx.filter_jit
+    def step(net, opt_state):
+        loss, grads = loss_fn(net)
+        updates, new_opt_state = optimizer.update(
+            eqx.filter(grads, eqx.is_array), opt_state,
+            eqx.filter(net, eqx.is_array))
+        new_net = eqx.apply_updates(net, updates)
+        return new_net, new_opt_state, loss
+
+    print("  Compiling JIT...")
+    for i in range(n_iter):
+        net, opt_state, loss = step(net, opt_state)
+        if i % 500 == 0:
+            print(f"  Iter {i}: loss={float(loss):.4e}")
+
+    print(f"  Final: loss={float(loss):.4e}")
+    return net
+
+
+def main():
+    print("="*60)
+    print("NN WALL PROFILES")
+    print("="*60)
+
+    # Train
+    net = train_network()
+
+    # Print learned parameters at benchmark etas
+    print("\nLearned parameters:")
+    eta_values = [0.367, 0.393, 0.449, 0.492]
+    for eta in eta_values:
+        A, B = net.from_eta(eta)
+        A, B = float(A), float(B)
+        C = 8*A + 2*B - 9
+        print(f"  eta={eta}: A={A:.4f}, B={B:.4f}, C={C:.4f}")
+
+    # Solve wall profiles
+    solver = WallSolver(nz=2048, Lz=8.0, R=0.5)
+
+    # Fixed-parameter functionals for comparison
+    fixed_funcs = {
+        'Lutsko (A=1, B=0)': esFMT_Tensor(A=1.0, B=0.0),
+        r'G\"ul et al. (A=1.3, B=$-$1)': esFMT_Tensor(A=1.3, B=-1.0),
+    }
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    axes = axes.flatten()
+
+    print("\nSolving wall profiles...")
+    for idx, eta in enumerate(eta_values):
+        ax = axes[idx]
+        print(f"\neta = {eta}:")
+
+        # MD data (subsampled for clarity)
+        if eta in MC_WALL_DATA:
+            mc = MC_WALL_DATA[eta]
+            rho_bulk = mc.get('rho_bulk', eta / ((4/3) * PI * 0.5**3))
+            mc_z = mc['z']
+            mc_rho_norm = mc['rho'] / rho_bulk
+            mask = mc_z <= 6.0
+            z_plot = mc_z[mask]
+            rho_plot = mc_rho_norm[mask]
+            dense = z_plot <= 2.0
+            sparse_idx = np.where(~dense)[0][::5]
+            plot_idx = np.concatenate([np.where(dense)[0], sparse_idx])
+            plot_idx.sort()
+            ax.plot(z_plot[plot_idx], rho_plot[plot_idx], 'ko', ms=3, mfc='white',
+                    mew=1.0, alpha=0.8, label='MD', zorder=10)
+
+        # Fixed functionals
+        for name, func in fixed_funcs.items():
+            result = solver.solve(eta, func, max_iter=4000, tol=1e-8, verbose=False)
+            contact = float(result['contact'])
+            ax.plot(result['z'], result['rho_norm'], '--', lw=1.2,
+                    alpha=0.7, label=f'{name}')
+            print(f"  {name}: contact = {contact:.3f}")
+
+        # NN-learned parameters
+        A_nn, B_nn = net.from_eta(eta)
+        A_nn, B_nn = float(A_nn), float(B_nn)
+        nn_func = esFMT_Tensor(A=A_nn, B=B_nn)
+        result_nn = solver.solve(eta, nn_func, max_iter=6000, tol=1e-8, verbose=False)
+        contact_nn = float(result_nn['contact'])
+        converged = result_nn.get('converged', True)
+
+        if converged:
+            ax.plot(result_nn['z'], result_nn['rho_norm'], '-', color='C3', lw=2,
+                    label=f'NN (A={A_nn:.2f}, B={B_nn:.2f})')
+            print(f"  NN: contact = {contact_nn:.3f}")
+        else:
+            # Check if profile looks reasonable despite not hitting tolerance
+            max_rho_norm = float(np.max(result_nn['rho_norm']))
+            if max_rho_norm < 25:
+                ax.plot(result_nn['z'], result_nn['rho_norm'], '-', color='C3', lw=2,
+                        label=f'NN (A={A_nn:.2f}, B={B_nn:.2f})')
+                print(f"  NN: contact = {contact_nn:.3f} (not converged but stable)")
+            else:
+                ax.text(0.5, 0.5, 'NN: unstable\nat this $\\eta$',
+                        transform=ax.transAxes, ha='center', va='center',
+                        fontsize=10, color='C3', style='italic',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                  edgecolor='C3', alpha=0.8))
+                print(f"  NN: DIVERGED (max rho/rho_b = {max_rho_norm:.1f})")
+
+        # Reference lines
+        ax.axhline(1.0, color='gray', ls='--', alpha=0.5, lw=0.8)
+        ax.axvline(0.5, color='gray', ls=':', alpha=0.3, lw=0.8)
+
+        ax.set_xlabel(r'$z/\sigma$')
+        ax.set_ylabel(r'$\rho(z)/\rho_b$')
+        ax.set_title(rf'$\eta = {eta}$')
+        ax.set_xlim([0.4, 6.0])
+        ax.grid(True, alpha=0.2)
+
+        if idx == 0:
+            ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+
+    plt.suptitle('Wall Profiles: NN-Learned vs Fixed Parameters', fontsize=14, y=1.01)
+    plt.tight_layout()
+
+    out = Path('outputs')
+    out.mkdir(exist_ok=True)
+    path = out / 'nn_wall_profiles.png'
+    plt.savefig(path)
+    print(f"\nSaved: {path}")
+    plt.close()
+
+    # Summary table
+    print("\n" + "="*60)
+    print("CONTACT DENSITY COMPARISON")
+    print("="*60)
+    print(f"{'eta':>6s}  {'MD':>8s}  {'CS':>8s}  {'Lutsko':>8s}  {'Gul':>8s}  {'NN':>8s}")
+    print("-"*50)
+    for eta in eta_values:
+        if eta in MC_WALL_DATA:
+            mc = MC_WALL_DATA[eta]
+            rho_bulk = mc.get('rho_bulk', eta / ((4/3) * PI * 0.5**3))
+            md_contact = mc['rho'][0] / rho_bulk
+        else:
+            rho_bulk = eta / ((4/3) * PI * 0.5**3)
+            md_contact = 0
+        cs_contact = float((1 + eta + eta**2 - eta**3) / (1 - eta)**3)
+
+        r_lut = solver.solve(eta, esFMT_Tensor(1.0, 0.0), max_iter=2000, tol=1e-7, verbose=False)
+        r_gul = solver.solve(eta, esFMT_Tensor(1.3, -1.0), max_iter=2000, tol=1e-7, verbose=False)
+        A_nn, B_nn = float(net.from_eta(eta)[0]), float(net.from_eta(eta)[1])
+        r_nn = solver.solve(eta, esFMT_Tensor(A_nn, B_nn), max_iter=2000, tol=1e-7, verbose=False)
+
+        print(f"{eta:6.3f}  {md_contact:8.2f}  {cs_contact:8.2f}  "
+              f"{float(r_lut['contact']):8.2f}  {float(r_gul['contact']):8.2f}  "
+              f"{float(r_nn['contact']):8.2f}")
+
+
+if __name__ == '__main__':
+    main()

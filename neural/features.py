@@ -17,8 +17,8 @@ Features
 import jax.numpy as jnp
 import equinox as eqx
 from jaxtyping import Array
-from cnfmt.core.grid import Grid
-from cnfmt.core.densities import WeightedDensityCalculator
+from core.grid import Grid
+from core.densities import WeightedDensityCalculator
 
 
 class FeatureExtractor(eqx.Module):

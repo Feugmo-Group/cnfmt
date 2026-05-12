@@ -22,14 +22,12 @@ import jax.numpy as jnp
 import argparse
 from pathlib import Path
 
-jax.config.update("jax_enable_x64", True)
-
-from cnfmt.neural.network import ConditionalNetwork
-from cnfmt.training.config import TrainingConfig
-from cnfmt.training.optimizers import train_bulk_adam, train_bulk_lbfgs, train_dft_phase
-from cnfmt.training.checkpoints import save_checkpoint, load_checkpoint
-from cnfmt.utils.plotting import create_publication_figure
-from cnfmt.utils.analysis import evaluate_network
+from neural.network import ConditionalNetwork
+from training.config import TrainingConfig
+from training.optimizers import train_bulk_adam, train_bulk_lbfgs, train_dft_phase
+from training.checkpoints import save_checkpoint, load_checkpoint
+from utils.plotting import create_publication_figure
+from utils.analysis import evaluate_network
 
 
 def main():

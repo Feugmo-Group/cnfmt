@@ -8,7 +8,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
-jax.config.update("jax_enable_x64", True)
+from core.thermodynamics import BulkThermodynamics as BT
 
 import sys
 sys.path.insert(0, '/mnt/user-data/uploads')
@@ -84,7 +84,7 @@ eta = 0.367
 sigma = 1.0
 rho_bulk = 6 * eta / PI
 MC_contact = 5.36
-CS_Z = (1 + eta + eta**2 - eta**3) / (1 - eta)**3
+CS_Z = float(BT.Z_CS(eta))
 
 # Solve density profiles
 solver = WallSolver(nz=1024, Lz=6.0, R=0.5)
@@ -194,7 +194,7 @@ ax4.grid(True, alpha=0.3)
 
 plt.suptitle('FMT Comparison: Density Profiles and Direct Correlation Functions (All Methods)', 
              fontsize=14, fontweight='bold', y=0.98)
-plt.savefig('/mnt/user-data/outputs/fmt_comprehensive_all_methods.png', 
+plt.savefig('outputs/fmt_comprehensive_all_methods.png', 
             dpi=150, bbox_inches='tight')
 print("Saved: fmt_comprehensive_all_methods.png")
 plt.close()

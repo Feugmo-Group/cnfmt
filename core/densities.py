@@ -31,7 +31,7 @@ import jax.numpy as jnp
 import equinox as eqx
 from typing import NamedTuple
 from jaxtyping import Array
-from cnfmt.core.weights import FMTKernels
+from .weights import FMTKernels
 
 
 class WeightedDensities(NamedTuple):

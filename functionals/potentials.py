@@ -30,9 +30,9 @@ import jax.numpy as jnp
 import equinox as eqx
 from typing import Optional, Union
 from jaxtyping import Array
-from cnfmt.core.grid import Grid
-from cnfmt.core.densities import WeightedDensityCalculator
-from cnfmt.functionals.lutsko import LutskoFunctional
+from core.grid import Grid
+from core.densities import WeightedDensityCalculator
+from .lutsko import LutskoFunctional
 
 
 class GrandPotential(eqx.Module):

@@ -7,7 +7,7 @@ Functions for evaluating and comparing functionals.
 
 import numpy as np
 from typing import Dict, List, Optional
-from cnfmt.core.thermodynamics import BulkThermodynamics
+from core.thermodynamics import BulkThermodynamics
 
 
 def evaluate_network(network, eta_values: Optional[np.ndarray] = None,

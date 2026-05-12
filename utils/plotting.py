@@ -197,8 +197,8 @@ def plot_thermodynamics(network, eta_range: np.ndarray = None,
     """
     Plot thermodynamic quantities: Z, μ_ex, χ_T.
     """
-    from cnfmt.core.thermodynamics import BulkThermodynamics
-    
+    from core.thermodynamics import BulkThermodynamics
+
     if eta_range is None:
         eta_range = np.linspace(0.05, 0.50, 100)
     
@@ -265,8 +265,8 @@ def plot_parameter_space(output_path: Optional[Path] = None,
     """
     Plot parameter space (A, B) with constraint contours.
     """
-    from cnfmt.core.thermodynamics import BulkThermodynamics
-    
+    from core.thermodynamics import BulkThermodynamics
+
     fig, ax = plt.subplots(figsize=(8, 6))
     
     # Grid for contour

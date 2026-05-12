@@ -23,7 +23,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-jax.config.update("jax_enable_x64", True)
 
 PI = jnp.pi
 
@@ -309,24 +308,24 @@ class ModifiedRSLT:
     def Phi(n):
         n0, n1, n2, n3 = n['n0'], n['n1'], n['n2'], n['n3']
         nv1_z, nv2_z = n['nv1_z'], n['nv2_z']
-        
+
         eta = jnp.clip(n3, 1e-14, 0.9999)
         one_m_eta = 1.0 - eta
-        
+
         phi2 = phi2_WBII(eta)
-        
+
         nv1_dot_nv2 = nv1_z * nv2_z
         nv2_sq = nv2_z**2
-        
-        # ξ² = nᵥ₂²/n₂²
-        n2_safe = jnp.maximum(jnp.abs(n2), 1e-20)
+
+        # ξ² = nᵥ₂²/n₂² — floor at 1e-10 to avoid underflow in n2_safe**2
+        n2_safe = jnp.maximum(jnp.abs(n2), 1e-10)
         xi2 = nv2_sq / n2_safe**2
         xi2 = jnp.clip(xi2, 0, 0.9999)
-        
+
         Phi1 = -n0 * jnp.log(one_m_eta)
         Phi2 = (n1*n2 - nv1_dot_nv2) / one_m_eta
         Phi3 = phi2 * n2**3 * (1-xi2)**3 / (24*PI * one_m_eta**2)
-        
+
         return jnp.where(n3 > 1e-12, Phi1 + Phi2 + Phi3, 0.0)
     
     @staticmethod
@@ -343,7 +342,7 @@ class ModifiedRSLT:
         nv1_dot_nv2 = nv1_z * nv2_z
         nv2_sq = nv2_z**2
         
-        n2_safe = jnp.maximum(jnp.abs(n2), 1e-20)
+        n2_safe = jnp.maximum(jnp.abs(n2), 1e-10)
         xi2 = jnp.clip(nv2_sq / n2_safe**2, 0, 0.9999)
         
         term2 = n1*n2 - nv1_dot_nv2
@@ -593,47 +592,16 @@ class WallSolver:
 
 
 # ============================================================================
-# MONTE CARLO DATA
+# MD DATA (loaded from data/hswall/ files)
 # ============================================================================
 
 def get_mc_profile(eta: float) -> np.ndarray:
-    """Get MC wall profile data."""
-    profiles = {
-        0.367: np.array([
-            [0.510, 3.7543085], [0.530, 3.2698767], [0.550, 2.8546749],
-            [0.570, 2.4986631], [0.590, 2.1929623], [0.610, 1.9302458],
-            [0.630, 1.7044568], [0.650, 1.5098530], [0.670, 1.3422220],
-            [0.690, 1.1976265], [0.710, 1.0726264], [0.730, 0.9646101],
-            [0.750, 0.8711540], [0.770, 0.7901845], [0.790, 0.7200606],
-            [0.810, 0.6592646], [0.830, 0.6065577], [0.850, 0.5609323],
-            [0.870, 0.5215091], [0.890, 0.4874595], [0.910, 0.4582073],
-            [0.930, 0.4331748], [0.950, 0.4119227], [0.970, 0.3940790],
-            [0.990, 0.3793644], [1.010, 0.3675033], [1.030, 0.3583127],
-            [1.050, 0.3516432], [1.070, 0.3474103], [1.090, 0.3455326],
-            [1.110, 0.3460356], [1.130, 0.3489446], [1.150, 0.3543193],
-        ]),
-        0.393: np.array([
-            [0.510, 4.6143129], [0.530, 3.9234880], [0.550, 3.3460584],
-            [0.570, 2.8629162], [0.590, 2.4580002], [0.610, 2.1180064],
-            [0.630, 1.8322161], [0.650, 1.5915280], [0.670, 1.3885278],
-            [0.690, 1.2169994], [0.710, 1.0718423], [0.730, 0.9487341],
-            [0.750, 0.8442476], [0.770, 0.7554538], [0.790, 0.6798796],
-            [0.810, 0.6155189], [0.830, 0.5607089], [0.850, 0.5140389],
-        ]),
-        0.449: np.array([
-            [0.510, 7.1434255], [0.530, 5.6966596], [0.550, 4.5630358],
-            [0.570, 3.6720352], [0.590, 2.9702559], [0.610, 2.4154181],
-            [0.630, 1.9761309], [0.650, 1.6268439], [0.670, 1.3483351],
-            [0.690, 1.1256610], [0.710, 0.9469973], [0.730, 0.8031472],
-        ]),
-    }
-    
-    available = list(profiles.keys())
-    closest = min(available, key=lambda x: abs(x - eta))
-    
-    data = profiles[closest]
-    rho_bulk = 6 * closest / PI
-    return np.column_stack([data[:, 0], data[:, 1] / rho_bulk])
+    """Get MD wall profile data as [z, rho/rho_bulk] array."""
+    from solvers.wall_profile import get_mc_data
+    data = get_mc_data(eta)
+    if data is None:
+        raise ValueError(f"No MD data found for eta={eta}")
+    return np.column_stack([data['z'], data['rho'] / data['rho_bulk']])
 
 
 # ============================================================================
@@ -692,8 +660,8 @@ def run_validation():
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/fmt_1d_wbii_tensor.png', dpi=150)
-    print(f"\nSaved: /mnt/user-data/outputs/fmt_1d_wbii_tensor.png")
+    plt.savefig('outputs/fmt_1d_wbii_tensor.png', dpi=150)
+    print(f"\nSaved: outputs/fmt_1d_wbii_tensor.png")
     
     # Summary
     print("\n" + "="*70)

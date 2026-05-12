@@ -281,8 +281,8 @@ def create_figure():
     ax.set_ylim([-1.5, 0.5])
     
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/conditional_AB_spatial.png', dpi=150, bbox_inches='tight')
-    print("Saved: /mnt/user-data/outputs/conditional_AB_spatial.png")
+    plt.savefig('outputs/conditional_AB_spatial.png', dpi=150, bbox_inches='tight')
+    print("Saved: outputs/conditional_AB_spatial.png")
     
     return fig
 

@@ -9,7 +9,7 @@ Free energy functionals for cDFT.
 - TestParticlePotential: External potential for test particle geometry
 """
 
-from cnfmt.functionals.lutsko import LutskoFunctional
-from cnfmt.functionals.potentials import GrandPotential, TestParticlePotential
+from .lutsko import LutskoFunctional
+from .potentials import GrandPotential, TestParticlePotential
 
 __all__ = ['LutskoFunctional', 'GrandPotential', 'TestParticlePotential']

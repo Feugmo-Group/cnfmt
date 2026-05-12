@@ -23,9 +23,9 @@ import jax.numpy as jnp
 from jaxtyping import Array
 from typing import Dict, Tuple, Any
 
-from cnfmt.core.thermodynamics import BulkThermodynamics
-from cnfmt.neural.network import ConditionalNetwork
-from cnfmt.training.config import TrainingConfig
+from core.thermodynamics import BulkThermodynamics
+from neural.network import ConditionalNetwork
+from .config import TrainingConfig
 
 
 def compute_bulk_loss_single(network: ConditionalNetwork, eta: float,

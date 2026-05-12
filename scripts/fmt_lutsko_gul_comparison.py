@@ -23,7 +23,13 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from typing import Dict
 
-jax.config.update("jax_enable_x64", True)
+from core.thermodynamics import BulkThermodynamics as BT
+
+Z_CS = BT.Z_CS
+Z_PY = BT.Z_PY
+Z_Lutsko = BT.Z_lutsko
+mu_ex_CS = BT.mu_ex_CS
+mu_ex_Lutsko = BT.mu_ex_bulk_lutsko
 
 PI = np.pi
 
@@ -50,33 +56,6 @@ MC_PROFILES = {
     ]),
 }
 
-
-# ============================================================================
-# THERMODYNAMICS
-# ============================================================================
-
-def Z_CS(eta):
-    """Carnahan-Starling compressibility factor."""
-    return (1 + eta + eta**2 - eta**3) / (1 - eta)**3
-
-def Z_PY(eta):
-    """Percus-Yevick compressibility factor."""
-    return (1 + eta + eta**2) / (1 - eta)**3
-
-def Z_Lutsko(eta, A, B):
-    """Lutsko compressibility factor."""
-    C = 8*A + 2*B - 9
-    return Z_PY(eta) + C * eta**2 / (3 * (1 - eta)**3)
-
-def mu_ex_CS(eta):
-    """Carnahan-Starling excess chemical potential."""
-    return eta * (8 - 9*eta + 3*eta**2) / (1 - eta)**3
-
-def mu_ex_Lutsko(eta, A, B):
-    """Lutsko excess chemical potential."""
-    C = 8*A + 2*B - 9
-    mu_RF = -np.log(1 - eta) + eta * (14 - 13*eta + 5*eta**2) / (2*(1-eta)**3)
-    return mu_RF + C * eta**2 * (3 - eta) / (6 * (1-eta)**3)
 
 
 # ============================================================================
@@ -507,7 +486,7 @@ def run_comparison():
     plt.suptitle('FMT Comparison: Density Profiles and Direct Correlation Functions', 
                  fontsize=14, fontweight='bold', y=0.98)
     
-    plt.savefig('/mnt/user-data/outputs/fmt_lutsko_gul_comparison.png', 
+    plt.savefig('outputs/fmt_lutsko_gul_comparison.png', 
                 dpi=150, bbox_inches='tight')
     print("Saved: fmt_lutsko_gul_comparison.png")
     plt.close()

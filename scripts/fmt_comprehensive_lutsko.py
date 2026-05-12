@@ -17,6 +17,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 
+from core.thermodynamics import BulkThermodynamics as BT
+
+Z_CS = BT.Z_CS
+Z_PY = BT.Z_PY
+Z_Lutsko = BT.Z_lutsko
+
 PI = np.pi
 
 
@@ -42,23 +48,6 @@ MC_PROFILES = {
     ]),
 }
 
-
-# ============================================================================
-# THERMODYNAMICS
-# ============================================================================
-
-def Z_CS(eta):
-    """Carnahan-Starling compressibility factor."""
-    return (1 + eta + eta**2 - eta**3) / (1 - eta)**3
-
-def Z_PY(eta):
-    """Percus-Yevick compressibility factor."""
-    return (1 + eta + eta**2) / (1 - eta)**3
-
-def Z_Lutsko(eta, A, B):
-    """Lutsko compressibility factor with (A,B) parameters."""
-    C = 8*A + 2*B - 9
-    return Z_PY(eta) + C * eta**2 / (3 * (1 - eta)**3)
 
 
 # ============================================================================
@@ -271,7 +260,7 @@ def create_comparison_figure():
     plt.suptitle('FMT Comparison: Density Profiles and Direct Correlation Functions', 
                  fontsize=14, fontweight='bold', y=0.98)
     
-    plt.savefig('/mnt/user-data/outputs/fmt_comprehensive_lutsko.png', 
+    plt.savefig('outputs/fmt_comprehensive_lutsko.png', 
                 dpi=150, bbox_inches='tight')
     print("\nSaved: fmt_comprehensive_lutsko.png")
     plt.close()

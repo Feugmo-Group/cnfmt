@@ -24,7 +24,7 @@ Y. Rosenfeld, Phys. Rev. Lett. 63, 980 (1989)
 import jax.numpy as jnp
 import equinox as eqx
 from jaxtyping import Array
-from cnfmt.core.grid import Grid
+from .grid import Grid
 
 
 class FMTKernels(eqx.Module):

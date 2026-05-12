@@ -21,7 +21,7 @@ import optax
 import equinox as eqx
 from typing import Tuple, List, Optional
 from jaxtyping import Array
-from cnfmt.functionals.potentials import GrandPotential
+from functionals.potentials import GrandPotential
 
 
 class DensityMinimizer(eqx.Module):

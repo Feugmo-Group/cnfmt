@@ -10,10 +10,10 @@ Fundamental components for cDFT calculations.
 - BulkThermodynamics: Analytical thermodynamic formulas
 """
 
-from cnfmt.core.grid import Grid
-from cnfmt.core.weights import FMTKernels
-from cnfmt.core.densities import WeightedDensities, WeightedDensityCalculator
-from cnfmt.core.thermodynamics import BulkThermodynamics
+from .grid import Grid
+from .weights import FMTKernels
+from .densities import WeightedDensities, WeightedDensityCalculator
+from .thermodynamics import BulkThermodynamics
 
 __all__ = ['Grid', 'FMTKernels', 'WeightedDensities', 'WeightedDensityCalculator', 
            'BulkThermodynamics']

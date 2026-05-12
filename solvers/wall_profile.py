@@ -22,12 +22,15 @@ For hard spheres at a hard wall:
 
 Reference
 ---------
-Davidchack, Laird, Roth, Condmat 2016 (MC data)
+Davidchack, Laird, Roth, Cond. Matt. Phys. 2016 (MD data)
 Gül, Roth, Evans, Phys. Rev. E 110, 064115 (2024)
 Roth, J. Phys.: Condens. Matter 22, 063102 (2010)
 
 Author: Computational Materials Science
 """
+
+import os
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -36,9 +39,6 @@ import numpy as np
 import equinox as eqx
 from typing import Dict, Tuple, Optional, List
 from dataclasses import dataclass
-from scipy import integrate
-
-jax.config.update("jax_enable_x64", True)
 
 
 @dataclass
@@ -98,116 +98,180 @@ class WallProfileCalculator:
     def _compute_weighted_densities(self, rho: np.ndarray) -> Dict[str, np.ndarray]:
         """
         Compute planar weighted densities via numerical convolution.
-        
+
         For planar geometry:
         n_α(z) = ∫ ρ(z') w_α(z - z') dz'
-        
-        The weight functions for a sphere are:
-        w_3(z) = π(R² - z²) Θ(R - |z|)  (volume)
-        w_2(z) = 2πR Θ(R - |z|)         (area)
+
+        Weight functions for a sphere of radius R:
+        w₃(z) = π(R² - z²) Θ(R - |z|)   (volume slice)
+        w₂(z) = 2πR Θ(R - |z|)           (surface)
+        w₁(z) = 1/2 Θ(R - |z|)           (= w₂/(4πR))
+        w₀(z) = 1/(2R) Θ(R - |z|)        (= w₁/R)
+        wᵥ₂,z(z) = 2πz Θ(R - |z|)       (vector, z-component)
+        wᵥ₁,z(z) = z/(2R) Θ(R - |z|)    (= wᵥ₂/(4πR))
+        wT,zz(z) = (2πR/3)(3z²/R² - 1) Θ(R - |z|)  (tensor, zz-component)
         """
         z = self.z
         dz = self.dz
         R = self.R
         n = len(z)
-        
-        # Initialize
+
+        # Initialize all weighted densities
         n3 = np.zeros(n)
         n2 = np.zeros(n)
-        
-        # Convolution via direct summation (more accurate for 1D)
+        n1 = np.zeros(n)
+        n0 = np.zeros(n)
+        nv2_z = np.zeros(n)
+        nv1_z = np.zeros(n)
+        T_zz = np.zeros(n)
+
+        # Convolution via direct summation
         for i in range(n):
-            # Integration range
-            z_lo = max(0, z[i] - R)
-            z_hi = min(z[-1], z[i] + R)
-            
-            # Find indices
             i_lo = max(0, int((z[i] - R) / dz))
             i_hi = min(n-1, int((z[i] + R) / dz))
-            
-            # Integrate
+
             for j in range(i_lo, i_hi + 1):
                 dz_ij = z[i] - z[j]
                 if abs(dz_ij) < R:
-                    # Weight functions
-                    w3 = np.pi * (R**2 - dz_ij**2)  # Cross-sectional area
-                    w2 = 2 * np.pi * R              # Circumference (approx)
-                    
-                    n3[i] += rho[j] * w3 * dz
-                    n2[i] += rho[j] * w2 * dz
-        
-        # Derived densities
-        n1 = n2 / (4 * np.pi * R)
-        n0 = n1 / R
-        
+                    # Scalar weights
+                    w3 = np.pi * (R**2 - dz_ij**2)
+                    w2 = 2 * np.pi * R
+                    w1 = 0.5
+                    w0 = 1.0 / (2 * R)
+                    # Vector weights (z-component)
+                    wv2_z = 2 * np.pi * dz_ij
+                    wv1_z = dz_ij / (2 * R)
+                    # Tensor weight (zz-component, traceless)
+                    wT_zz = (2 * np.pi * R / 3) * (3 * dz_ij**2 / R**2 - 1)
+
+                    rho_dz = rho[j] * dz
+                    n3[i] += rho_dz * w3
+                    n2[i] += rho_dz * w2
+                    n1[i] += rho_dz * w1
+                    n0[i] += rho_dz * w0
+                    nv2_z[i] += rho_dz * wv2_z
+                    nv1_z[i] += rho_dz * wv1_z
+                    T_zz[i] += rho_dz * wT_zz
+
         # Clip n3 to physical range
-        n3 = np.clip(n3, 0.0, 0.74)
-        
-        return {'n0': n0, 'n1': n1, 'n2': n2, 'n3': n3}
+        n3 = np.clip(n3, 0.0, 0.9999)
+
+        return {
+            'n0': n0, 'n1': n1, 'n2': n2, 'n3': n3,
+            'nv1_z': nv1_z, 'nv2_z': nv2_z, 'T_zz': T_zz
+        }
     
     def _Phi_lutsko(self, n: Dict[str, np.ndarray]) -> np.ndarray:
         """
-        Compute Lutsko free energy density Φ.
-        
-        Φ = Φ₁ + Φ₂ + Φ₃
-        
+        Compute esFMT free energy density Φ = Φ₁ + Φ₂ + Φ₃.
+
         Φ₁ = -n₀ ln(1 - n₃)
-        Φ₂ = A × n₁n₂/(1 - n₃)  
-        Φ₃ = B × n₂³/(24π(1-n₃)²)
+        Φ₂ = (n₁n₂ - nv1·nv2) / (1 - n₃)
+        Φ₃ = (A·term_A + B·term_B) / (24π(1-n₃)²)
+
+        In 1D planar geometry the tensor traces simplify:
+          Tr(T²) = 3T_zz²/2,  Tr(T³) = 3T_zz³/4,  nv2·T·nv2 = nv2_z²·T_zz
         """
         n0, n1, n2, n3 = n['n0'], n['n1'], n['n2'], n['n3']
-        
-        # Avoid singularities
+        nv1_z = n.get('nv1_z', np.zeros_like(n0))
+        nv2_z = n.get('nv2_z', np.zeros_like(n0))
+        T_zz = n.get('T_zz', np.zeros_like(n0))
+
         one_minus_n3 = np.maximum(1 - n3, 1e-12)
-        
+
+        nv1_dot_nv2 = nv1_z * nv2_z
+        nv2_sq = nv2_z**2
+
+        # Tensor traces for 1D planar geometry
+        T2 = 1.5 * T_zz**2       # Tr(T²)
+        T3 = 0.75 * T_zz**3      # Tr(T³)
+        vTv = nv2_sq * T_zz       # nv2·T·nv2
+
         Phi1 = -n0 * np.log(one_minus_n3)
-        Phi2 = self.A * n1 * n2 / one_minus_n3
-        Phi3 = self.B * n2**3 / (24 * np.pi * one_minus_n3**2)
-        
+        Phi2 = (n1 * n2 - nv1_dot_nv2) / one_minus_n3
+
+        # A term: n₂³ - 3n₂nv₂² + 3vTv - T³
+        term_A = n2**3 - 3*n2*nv2_sq + 3*vTv - T3
+        # B term: n₂³ - 3n₂T² + 2T³
+        term_B = n2**3 - 3*n2*T2 + 2*T3
+
+        Phi3 = (self.A * term_A + self.B * term_B) / (24 * np.pi * one_minus_n3**2)
+
         return Phi1 + Phi2 + Phi3
     
-    def _c1_from_n(self, n: Dict[str, np.ndarray]) -> np.ndarray:
+    def _c1_from_n(self, n_dict: Dict[str, np.ndarray]) -> np.ndarray:
         """
-        Compute c⁽¹⁾(z) = -δF_ex/δρ(z) for Lutsko functional.
-        
-        Using functional derivative chain rule.
+        Compute c⁽¹⁾(z) = -δF_ex/δρ(z) for esFMT functional.
+
+        Uses chain rule: c⁽¹⁾(z) = -Σ_α ∫ (∂Φ/∂n_α)(z') w_α(z-z') dz'
+        Including scalar, vector, and tensor weighted density contributions.
         """
-        n0, n1, n2, n3 = n['n0'], n['n1'], n['n2'], n['n3']
+        n0, n1, n2, n3 = n_dict['n0'], n_dict['n1'], n_dict['n2'], n_dict['n3']
+        nv1_z = n_dict.get('nv1_z', np.zeros_like(n0))
+        nv2_z = n_dict.get('nv2_z', np.zeros_like(n0))
+        T_zz = n_dict.get('T_zz', np.zeros_like(n0))
         R = self.R
-        
-        # Avoid singularities
+        A, B = self.A, self.B
+
         one_minus_n3 = np.maximum(1 - n3, 1e-12)
-        
-        # ∂Φ/∂n_α
+
+        nv1_dot_nv2 = nv1_z * nv2_z
+        nv2_sq = nv2_z**2
+        T2 = 1.5 * T_zz**2
+        T3 = 0.75 * T_zz**3
+        vTv = nv2_sq * T_zz
+        term_A = n2**3 - 3*n2*nv2_sq + 3*vTv - T3
+        term_B = n2**3 - 3*n2*T2 + 2*T3
+
+        # ∂Φ/∂n_α  (matches esFMT_Tensor.dPhi)
         dPhi_dn0 = -np.log(one_minus_n3)
-        dPhi_dn1 = self.A * n2 / one_minus_n3
-        dPhi_dn2 = self.A * n1 / one_minus_n3 + self.B * n2**2 / (8 * np.pi * one_minus_n3**2)
-        dPhi_dn3 = n0 / one_minus_n3 + self.A * n1 * n2 / one_minus_n3**2 + self.B * n2**3 / (12 * np.pi * one_minus_n3**3)
-        
-        # c⁽¹⁾ = -∫ (∂Φ/∂n_α) w_α dz'
-        # For planar geometry with scalar weighted densities:
-        n = len(self.z)
-        c1 = np.zeros(n)
-        
-        for i in range(n):
-            # Convolution with weight functions
+        dPhi_dn1 = n2 / one_minus_n3
+        dPhi_dn2 = (n1 / one_minus_n3 +
+                     (A*(3*n2**2 - 3*nv2_sq) + B*(3*n2**2 - 3*T2))
+                     / (24*np.pi*one_minus_n3**2))
+        dPhi_dn3 = (n0 / one_minus_n3 +
+                     (n1*n2 - nv1_dot_nv2) / one_minus_n3**2 +
+                     2*(A*term_A + B*term_B) / (24*np.pi*one_minus_n3**3))
+        dPhi_dnv1_z = -nv2_z / one_minus_n3
+        dPhi_dnv2_z = (-nv1_z / one_minus_n3 +
+                        A*(-6*n2*nv2_z + 6*T_zz*nv2_z) / (24*np.pi*one_minus_n3**2))
+        dPhi_dT_zz = ((A*(3*nv2_sq - 2.25*T_zz**2) +
+                        B*(-9*n2*T_zz + 4.5*T_zz**2))
+                       / (24*np.pi*one_minus_n3**2))
+
+        # c⁽¹⁾ = -Σ_α (∂Φ/∂n_α ★ w_α)
+        ngrid = len(self.z)
+        c1 = np.zeros(ngrid)
+
+        for i in range(ngrid):
             i_lo = max(0, int((self.z[i] - R) / self.dz))
-            i_hi = min(n-1, int((self.z[i] + R) / self.dz))
-            
+            i_hi = min(ngrid - 1, int((self.z[i] + R) / self.dz))
+
             integral = 0.0
             for j in range(i_lo, i_hi + 1):
                 dz_ij = self.z[i] - self.z[j]
                 if abs(dz_ij) < R:
+                    # Scalar weights
                     w3 = np.pi * (R**2 - dz_ij**2)
                     w2 = 2 * np.pi * R
-                    w1 = w2 / (4 * np.pi * R)
-                    w0 = w1 / R
-                    
-                    integral += (dPhi_dn0[j] * w0 + dPhi_dn1[j] * w1 + 
-                                dPhi_dn2[j] * w2 + dPhi_dn3[j] * w3) * self.dz
-            
+                    w1 = 0.5
+                    w0 = 1.0 / (2 * R)
+                    # Vector weights (note sign flip: w_v(z-z') vs w_v(z'-z))
+                    wv2_z = -2 * np.pi * dz_ij
+                    wv1_z = -dz_ij / (2 * R)
+                    # Tensor weight (even function, no sign flip)
+                    wT_zz = (2*np.pi*R/3) * (3*dz_ij**2/R**2 - 1)
+
+                    integral += (dPhi_dn0[j] * w0 +
+                                 dPhi_dn1[j] * w1 +
+                                 dPhi_dn2[j] * w2 +
+                                 dPhi_dn3[j] * w3 +
+                                 dPhi_dnv1_z[j] * wv1_z +
+                                 dPhi_dnv2_z[j] * wv2_z +
+                                 dPhi_dT_zz[j] * wT_zz) * self.dz
+
             c1[i] = -integral
-        
+
         return c1
     
     def _mu_ex_bulk(self, eta: float) -> float:
@@ -251,12 +315,15 @@ class WallProfileCalculator:
         # Initialize density profile
         rho = np.where(z < R, 1e-15, rho_bulk)
         
-        # Bulk reference c1
+        # Bulk reference c1 (vector/tensor terms vanish by symmetry in bulk)
         n_bulk = {
             'n0': np.array([rho_bulk]),
             'n1': np.array([rho_bulk * R]),
             'n2': np.array([rho_bulk * 4 * np.pi * R**2]),
-            'n3': np.array([eta])
+            'n3': np.array([eta]),
+            'nv1_z': np.array([0.0]),
+            'nv2_z': np.array([0.0]),
+            'T_zz': np.array([0.0]),
         }
         c1_bulk = self._c1_from_n(n_bulk)[0]
         
@@ -343,58 +410,133 @@ def compute_wall_profiles(etas: List[float], A: float = 1.0, B: float = 0.0,
 
 
 # ============================================================================
-# MONTE CARLO REFERENCE DATA (Davidchack, Laird, Roth 2016)
+# MD REFERENCE DATA (Davidchack, Laird, Roth, Cond. Matt. Phys. 2016)
 # ============================================================================
 
-MC_WALL_DATA = {
-    0.367: {
-        'z': np.array([0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95,
-                       1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45,
-                       1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.50, 3.00, 4.00, 5.00]),
-        'rho': np.array([3.75, 3.60, 3.40, 3.15, 2.90, 2.65, 2.42, 2.20, 2.00, 1.82,
-                         1.67, 1.54, 1.43, 1.34, 1.26, 1.20, 1.14, 1.10, 1.06, 1.04,
-                         1.02, 0.98, 0.96, 0.95, 0.95, 0.96, 0.99, 1.00, 1.00, 1.00])
-    },
-    0.393: {
-        'z': np.array([0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95,
-                       1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45,
-                       1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.50, 3.00, 4.00, 5.00]),
-        'rho': np.array([4.61, 4.40, 4.10, 3.78, 3.45, 3.12, 2.82, 2.54, 2.28, 2.05,
-                         1.85, 1.68, 1.54, 1.42, 1.32, 1.24, 1.17, 1.12, 1.08, 1.04,
-                         1.02, 0.98, 0.95, 0.94, 0.95, 0.97, 1.01, 1.00, 1.00, 1.00])
-    },
-    0.449: {
-        'z': np.array([0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95,
-                       1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45,
-                       1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.50, 3.00, 4.00, 5.00]),
-        'rho': np.array([7.14, 6.70, 6.10, 5.50, 4.90, 4.32, 3.80, 3.32, 2.88, 2.50,
-                         2.18, 1.92, 1.70, 1.52, 1.38, 1.26, 1.18, 1.11, 1.06, 1.03,
-                         1.00, 0.96, 0.94, 0.94, 0.96, 1.00, 1.06, 1.02, 1.00, 1.00])
-    },
-    0.492: {
-        'z': np.array([0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95,
-                       1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45,
-                       1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.50, 3.00, 4.00, 5.00]),
-        'rho': np.array([9.82, 9.10, 8.20, 7.30, 6.40, 5.55, 4.78, 4.10, 3.50, 3.00,
-                         2.58, 2.22, 1.93, 1.70, 1.52, 1.38, 1.26, 1.18, 1.12, 1.07,
-                         1.04, 0.98, 0.94, 0.93, 0.95, 1.00, 1.10, 1.04, 1.00, 1.00])
-    }
-}
+def _find_data_dir() -> Optional[Path]:
+    """Locate the hswall data directory."""
+    # Try relative to this file, then relative to cwd
+    candidates = [
+        Path(__file__).resolve().parent.parent / 'data' / 'hswall',
+        Path('data') / 'hswall',
+    ]
+    for d in candidates:
+        if d.is_dir():
+            return d
+    return None
+
+
+def _load_md_data_from_files() -> Dict[float, Dict]:
+    """Load all MD wall profile data from data/hswall/*.dat files."""
+    data_dir = _find_data_dir()
+    if data_dir is None:
+        return {}
+
+    result = {}
+    for dat_file in sorted(data_dir.glob('hswall*.dat')):
+        # Parse bulk density from header
+        rho_bulk = None
+        with open(dat_file) as f:
+            for line in f:
+                if 'Bulk density' in line:
+                    rho_bulk = float(line.split('=')[1].split('(')[0].strip())
+                    break
+        if rho_bulk is None:
+            continue
+
+        eta = rho_bulk * np.pi / 6.0
+        data = np.loadtxt(dat_file, comments='%')
+        # Columns: z/sigma, rho(z), 95% CI
+        result[round(eta, 4)] = {
+            'z': data[:, 0],
+            'rho': data[:, 1],            # absolute density
+            'rho_err': data[:, 2],         # 95% CI
+            'rho_bulk': rho_bulk,
+            'eta': eta,
+            'file': str(dat_file.name),
+        }
+    return result
+
+
+# Lazy-loaded cache
+_MD_DATA_CACHE = None
+
+def _get_md_cache() -> Dict[float, Dict]:
+    global _MD_DATA_CACHE
+    if _MD_DATA_CACHE is None:
+        _MD_DATA_CACHE = _load_md_data_from_files()
+    return _MD_DATA_CACHE
+
+
+# Backward-compatible dict interface (lazy property)
+class _MDWallDataProxy(dict):
+    """Lazy dict that loads MD data from files on first access."""
+    _loaded = False
+
+    def _ensure_loaded(self):
+        if not self._loaded:
+            self.update(_get_md_cache())
+            self._loaded = True
+
+    def __contains__(self, key):
+        self._ensure_loaded()
+        # Allow approximate eta matching (within 0.002)
+        if super().__contains__(key):
+            return True
+        for k in super().keys():
+            if abs(k - key) < 0.002:
+                return True
+        return False
+
+    def __getitem__(self, key):
+        self._ensure_loaded()
+        if super().__contains__(key):
+            return super().__getitem__(key)
+        # Approximate match
+        for k in sorted(super().keys()):
+            if abs(k - key) < 0.002:
+                return super().__getitem__(k)
+        raise KeyError(key)
+
+    def keys(self):
+        self._ensure_loaded()
+        return super().keys()
+
+    def values(self):
+        self._ensure_loaded()
+        return super().values()
+
+    def items(self):
+        self._ensure_loaded()
+        return super().items()
+
+    def __iter__(self):
+        self._ensure_loaded()
+        return super().__iter__()
+
+    def __len__(self):
+        self._ensure_loaded()
+        return super().__len__()
+
+
+MC_WALL_DATA = _MDWallDataProxy()
 
 
 def get_mc_data(eta: float) -> Optional[Dict]:
-    """Get MC reference data for given eta."""
-    available = list(MC_WALL_DATA.keys())
+    """Get MD reference data for given eta (backward compatible)."""
+    cache = _get_md_cache()
+    if not cache:
+        return None
+
+    available = list(cache.keys())
     closest = min(available, key=lambda x: abs(x - eta))
-    
+
     if abs(closest - eta) < 0.01:
-        data = MC_WALL_DATA[closest]
-        # Normalize to rho/rho_bulk
-        rho_bulk = closest / ((4/3) * np.pi * 0.5**3)
+        data = cache[closest]
         return {
             'z': data['z'],
             'rho': data['rho'],
-            'rho_bulk': rho_bulk,
-            'eta': closest
+            'rho_bulk': data['rho_bulk'],
+            'eta': data['eta'],
         }
     return None

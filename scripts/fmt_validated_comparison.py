@@ -19,8 +19,6 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from typing import Dict, Tuple, List
 
-jax.config.update("jax_enable_x64", True)
-
 PI = np.pi
 
 
@@ -461,7 +459,7 @@ def run_comparison():
     plt.suptitle('FMT Comparison: Density Profiles and Direct Correlation Functions', 
                  fontsize=14, fontweight='bold', y=0.98)
     
-    plt.savefig('/mnt/user-data/outputs/fmt_validated_comparison.png', 
+    plt.savefig('outputs/fmt_validated_comparison.png', 
                 dpi=150, bbox_inches='tight')
     print("Saved: fmt_validated_comparison.png")
     plt.close()

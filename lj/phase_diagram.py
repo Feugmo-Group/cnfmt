@@ -22,13 +22,16 @@ from scipy.integrate import quad
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 from pathlib import Path
+
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'))
+from paper_figure_style import apply_paper_style
+apply_paper_style()
 from typing import Tuple, List, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
-jax.config.update("jax_enable_x64", True)
-
-OUTPUT_DIR = Path('/mnt/user-data/outputs')
+OUTPUT_DIR = Path('outputs')
 OUTPUT_DIR.mkdir(exist_ok=True)
 PI = np.pi
 
@@ -165,7 +168,7 @@ class UniformLJFluid:
     
     def get_AB(self, eta):
         if self.nn is not None:
-            A, B = self.nn(float(eta), float(self.T_star))
+            A, B = self.nn.from_eta(float(eta))
             return float(A), float(B)
         return self.A_fixed, self.B_fixed
     
@@ -289,26 +292,7 @@ class LJPhaseDiagram:
 # NEURAL NETWORK
 # =============================================================================
 
-class ABNetwork(eqx.Module):
-    layers: list
-    
-    def __init__(self, hidden=[32, 32], key=None):
-        if key is None:
-            key = jax.random.PRNGKey(42)
-        keys = jax.random.split(key, len(hidden) + 1)
-        dims = [2] + hidden + [2]
-        self.layers = [eqx.nn.Linear(d_in, d_out, key=k) 
-                       for d_in, d_out, k in zip(dims[:-1], dims[1:], keys)]
-    
-    def __call__(self, eta, T_star):
-        x = jnp.array([eta / 0.5, (T_star - 1.0) / 0.3])
-        for layer in self.layers[:-1]:
-            x = jnp.tanh(layer(x))
-        out = self.layers[-1](x)
-        # A near 1, B near 0 (Lutsko values)
-        A = 0.8 + 0.4 * jax.nn.sigmoid(out[0])  # A ∈ [0.8, 1.2]
-        B = -0.2 + 0.4 * jax.nn.sigmoid(out[1])  # B ∈ [-0.2, 0.2]
-        return A, B
+from neural.network import ConditionalNetwork
 
 
 def train_nn(network, potential, ref_coex, n_epochs=300, lr=0.01):
@@ -339,8 +323,8 @@ def train_nn(network, potential, ref_coex, n_epochs=300, lr=0.01):
         eta_v = (PI / 6) * rv * d_T**3
         eta_l = (PI / 6) * rl * d_T**3
         
-        A_v, B_v = net(eta_v, T)
-        A_l, B_l = net(eta_l, T)
+        A_v, B_v = net.from_eta(eta_v)
+        A_l, B_l = net.from_eta(eta_l)
         
         mu_v = jnp.log(rv * sigma**3) + mu_ex_lutsko(eta_v, A_v, B_v) + a * rv / kT
         mu_l = jnp.log(rl * sigma**3) + mu_ex_lutsko(eta_l, A_l, B_l) + a * rl / kT
@@ -393,9 +377,9 @@ def plot_lutsko(potential, coex):
         ax.axhline(T_c, color='purple', ls=':', alpha=0.7, label=f'T*_c ≈ {T_c:.2f}')
     
     ax.axhline(1.28, color='gray', ls='--', alpha=0.5, label='Lutsko T*_c ~ 1.28')
-    ax.set_xlabel('ρσ³', fontsize=11)
-    ax.set_ylabel('T* = kT/ε', fontsize=11)
-    ax.set_title('(a) Vapor-Liquid Coexistence', fontsize=12)
+    ax.set_xlabel('ρσ³', fontsize=14)
+    ax.set_ylabel('T* = kT/ε', fontsize=14)
+    ax.set_title('(a) Vapor-Liquid Coexistence', fontsize=14)
     ax.legend(fontsize=9)
     ax.set_xlim([0, 0.9])
     ax.set_ylim([0.6, 1.5])
@@ -413,10 +397,10 @@ def plot_lutsko(potential, coex):
         ax.plot(rho_range, P, color=c, lw=1.5, label=f'T*={T}')
     
     ax.axhline(0, color='k', lw=0.5)
-    ax.set_xlabel('ρσ³', fontsize=11)
-    ax.set_ylabel('βPσ³', fontsize=11)
-    ax.set_title('(b) Pressure Isotherms', fontsize=12)
-    ax.legend(fontsize=8, ncol=2)
+    ax.set_xlabel('ρσ³', fontsize=14)
+    ax.set_ylabel('βPσ³', fontsize=14)
+    ax.set_title('(b) Pressure Isotherms', fontsize=14)
+    ax.legend(fontsize=10, ncol=2)
     ax.set_xlim([0, 0.75])
     ax.set_ylim([-0.3, 2])
     ax.grid(True, alpha=0.3)
@@ -429,10 +413,10 @@ def plot_lutsko(potential, coex):
         mu = [fluid.mu_total(r) for r in rho_range2]
         ax.plot(rho_range2, mu, color=c, lw=1.5, label=f'T*={T}')
     
-    ax.set_xlabel('ρσ³', fontsize=11)
-    ax.set_ylabel('βμ', fontsize=11)
-    ax.set_title('(c) Chemical Potential Isotherms', fontsize=12)
-    ax.legend(fontsize=8, ncol=2)
+    ax.set_xlabel('ρσ³', fontsize=14)
+    ax.set_ylabel('βμ', fontsize=14)
+    ax.set_title('(c) Chemical Potential Isotherms', fontsize=14)
+    ax.legend(fontsize=10, ncol=2)
     ax.set_xlim([0, 0.75])
     ax.grid(True, alpha=0.3)
     
@@ -457,16 +441,16 @@ def plot_lutsko(potential, coex):
         ax.axvline(rv, color='red', ls=':', alpha=0.5)
         ax.axvline(rl, color='red', ls=':', alpha=0.5)
     
-    ax.set_xlabel('ρσ³', fontsize=11)
-    ax.set_ylabel('βfσ³', fontsize=11)
-    ax.set_title(f'(d) Free Energy Density at T*={T}', fontsize=12)
+    ax.set_xlabel('ρσ³', fontsize=14)
+    ax.set_ylabel('βfσ³', fontsize=14)
+    ax.set_title(f'(d) Free Energy Density at T*={T}', fontsize=14)
     ax.legend(fontsize=9)
     ax.set_xlim([0, 0.7])
     ax.grid(True, alpha=0.3)
     
-    plt.suptitle('Lennard-Jones Fluid Phase Behavior (r_c = 3σ)', fontsize=14, fontweight='bold')
+    plt.suptitle('Lennard-Jones Fluid Phase Behavior (r_c = 3σ)', fontsize=16, fontweight='bold')
     plt.tight_layout()
-    plt.savefig(OUTPUT_DIR / 'lj_phase_diagram_lutsko.png', dpi=150, bbox_inches='tight')
+    plt.savefig(OUTPUT_DIR / 'lj_phase_diagram_lutsko.png', dpi=300, bbox_inches='tight')
     print(f"  Saved: lj_phase_diagram_lutsko.png")
     plt.close()
 
@@ -515,29 +499,28 @@ def plot_nn(network, losses, potential, ref_coex):
     eta_range = np.linspace(0.01, 0.5, 100)
     
     ax = fig.add_subplot(gs[0, 2])
-    for T, c in [(0.8, 'blue'), (1.0, 'green'), (1.2, 'red')]:
-        ax.plot(eta_range, [float(network(e, T)[0]) for e in eta_range], color=c, lw=2, label=f'T*={T}')
+    A_vals = [float(network.from_eta(e)[0]) for e in eta_range]
+    ax.plot(eta_range, A_vals, color='blue', lw=2, label='A(η)')
     ax.axhline(1.0, color='gray', ls='--', lw=1.5, label='Lutsko A=1')
     ax.set_xlabel('η')
-    ax.set_ylabel('A(η, T*)')
+    ax.set_ylabel('A(η)')
     ax.set_title('(c) Learned A', fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
-    
+
     ax = fig.add_subplot(gs[1, 0])
-    for T, c in [(0.8, 'blue'), (1.0, 'green'), (1.2, 'red')]:
-        ax.plot(eta_range, [float(network(e, T)[1]) for e in eta_range], color=c, lw=2, label=f'T*={T}')
+    B_vals = [float(network.from_eta(e)[1]) for e in eta_range]
+    ax.plot(eta_range, B_vals, color='blue', lw=2, label='B(η)')
     ax.axhline(0.0, color='gray', ls='--', lw=1.5, label='Lutsko B=0')
     ax.set_xlabel('η')
-    ax.set_ylabel('B(η, T*)')
+    ax.set_ylabel('B(η)')
     ax.set_title('(d) Learned B', fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
-    
+
     ax = fig.add_subplot(gs[1, 1])
-    for T, c in [(0.8, 'blue'), (1.0, 'green'), (1.2, 'red')]:
-        D = [8*float(network(e, T)[0]) + 2*float(network(e, T)[1]) - 9 for e in eta_range]
-        ax.plot(eta_range, D, color=c, lw=2, label=f'T*={T}')
+    D = [8*float(network.from_eta(e)[0]) + 2*float(network.from_eta(e)[1]) - 9 for e in eta_range]
+    ax.plot(eta_range, D, color='blue', lw=2, label='Δ(η)')
     ax.axhline(0, color='gray', ls='--', lw=1.5, label='PY (Δ=0)')
     ax.axhline(-1, color='orange', ls=':', lw=1.5, label='Lutsko (Δ=-1)')
     ax.set_xlabel('η')
@@ -545,19 +528,18 @@ def plot_nn(network, losses, potential, ref_coex):
     ax.set_title('(e) EOS Correction', fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
-    
+
     ax = fig.add_subplot(gs[1, 2])
     eta_g = np.linspace(0.01, 0.5, 50)
-    T_g = np.linspace(0.7, 1.3, 50)
-    A_g = np.array([[float(network(e, t)[0]) for e in eta_g] for t in T_g])
-    cs = ax.contourf(eta_g, T_g, A_g, levels=20, cmap='RdYlBu_r')
-    plt.colorbar(cs, ax=ax, label='A')
+    A_g = np.array([float(network.from_eta(e)[0]) for e in eta_g])
+    ax.plot(eta_g, A_g, 'b-', lw=2)
     ax.set_xlabel('η')
-    ax.set_ylabel('T*')
-    ax.set_title('(f) A(η, T*) Heatmap', fontweight='bold')
+    ax.set_ylabel('A(η)')
+    ax.set_title('(f) A(η) Profile', fontweight='bold')
+    ax.grid(True, alpha=0.3)
     
-    plt.suptitle('Neural Network A(η, T*), B(η, T*)', fontsize=14, fontweight='bold')
-    plt.savefig(OUTPUT_DIR / 'lj_phase_diagram_nn.png', dpi=150, bbox_inches='tight')
+    plt.suptitle('Neural Network A(η, T*), B(η, T*)', fontsize=16, fontweight='bold')
+    plt.savefig(OUTPUT_DIR / 'lj_phase_diagram_nn.png', dpi=300, bbox_inches='tight')
     print(f"  Saved: lj_phase_diagram_nn.png")
     plt.close()
 
@@ -592,7 +574,7 @@ def main():
     
     # NN training
     print("\n--- Neural Network ---")
-    network = ABNetwork(hidden=[32, 32], key=jax.random.PRNGKey(42))
+    network = ConditionalNetwork(jax.random.PRNGKey(42))
     network, losses = train_nn(network, potential, coex, n_epochs=300, lr=0.01)
     plot_nn(network, losses, potential, coex)
     

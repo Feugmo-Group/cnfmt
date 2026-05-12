@@ -36,12 +36,10 @@ from pathlib import Path
 import argparse
 from typing import List, Tuple, Dict
 
-jax.config.update("jax_enable_x64", True)
-
-from cnfmt.neural.network import ConditionalNetwork
-from cnfmt.core.thermodynamics import BulkThermodynamics
-from cnfmt.training.config import TrainingConfig
-from cnfmt.training.losses import (
+from neural.network import ConditionalNetwork
+from core.thermodynamics import BulkThermodynamics
+from training.config import TrainingConfig
+from training.losses import (
     compute_bulk_loss, 
     compute_contact_loss,
     compute_combined_loss

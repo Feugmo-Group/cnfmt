@@ -23,8 +23,6 @@ import matplotlib.pyplot as plt
 from typing import Tuple, Dict, NamedTuple
 import equinox as eqx
 
-jax.config.update("jax_enable_x64", True)
-
 PI = jnp.pi
 
 
@@ -706,7 +704,7 @@ def main():
     print(f"C_int  = {8*params['A_int'] + 2*params['B_int'] - 9:.4f}")
     
     # Generate plots
-    output_path = '/mnt/user-data/outputs/conditional_AB_spatial.png'
+    output_path = 'outputs/conditional_AB_spatial.png'
     results = plot_conditional_results(solver, params, output_path)
     
     # Summary table

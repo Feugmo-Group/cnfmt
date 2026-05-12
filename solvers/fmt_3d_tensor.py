@@ -56,7 +56,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-jax.config.update("jax_enable_x64", True)
 
 # ============================================================================
 # CONSTANTS AND PARAMETERS
@@ -1170,8 +1169,8 @@ def run_3d_wall_validation():
         ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/fmt_3d_validation.png', dpi=150)
-    print(f"\nSaved: /mnt/user-data/outputs/fmt_3d_validation.png")
+    plt.savefig('outputs/fmt_3d_validation.png', dpi=150)
+    print(f"\nSaved: outputs/fmt_3d_validation.png")
     plt.close()
     
     # Summary table

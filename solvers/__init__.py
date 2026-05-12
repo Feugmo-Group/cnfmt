@@ -13,9 +13,9 @@ Validated FMT implementations:
 - fmt_3d_tensor: Full 3D with tensor terms
 """
 
-from cnfmt.solvers.minimizer import DensityMinimizer
-from cnfmt.solvers.test_particle import TestParticleCalculator
-from cnfmt.solvers.wall_profile import (
+from .minimizer import DensityMinimizer
+from .test_particle import TestParticleCalculator
+from .wall_profile import (
     WallProfileCalculator,
     WallProfileConfig,
     compute_wall_profiles,
@@ -24,7 +24,7 @@ from cnfmt.solvers.wall_profile import (
 )
 
 # Validated 1D FMT with tensor terms
-from cnfmt.solvers.fmt_1d_wbii_tensor import (
+from .fmt_1d_wbii_tensor import (
     Weights1D,
     RosenfeldFMT,
     WhiteBearIIFMT,
@@ -36,8 +36,8 @@ from cnfmt.solvers.fmt_1d_wbii_tensor import (
     get_mc_profile
 )
 
-# Validated 3D FMT with tensor terms  
-from cnfmt.solvers.fmt_3d_tensor import (
+# Validated 3D FMT with tensor terms
+from .fmt_3d_tensor import (
     Grid3D,
     FMTWeights3D,
     WeightedDensities,

@@ -6,8 +6,13 @@ OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 def main():
     print("CNFMT - Generate All Plots")
-    for name, mod in [("Bulk", "cnfmt.scripts.train_bulk"), ("Compare", "cnfmt.scripts.compare_methods"), ("LJ", "cnfmt.lj.phase_diagram")]:
+    commands = [
+        ("Bulk", [sys.executable, "-m", "cnfmt.scripts.train_bulk"]),
+        ("Compare", [sys.executable, "-m", "cnfmt.scripts.train_bulk", "--compare"]),
+        ("LJ", [sys.executable, "-m", "cnfmt.lj.phase_diagram"]),
+    ]
+    for name, cmd in commands:
         print(f">>> {name}")
-        subprocess.run([sys.executable, "-m", mod])
+        subprocess.run(cmd)
     print("Done - plots in ./outputs/")
 if __name__ == "__main__": main()

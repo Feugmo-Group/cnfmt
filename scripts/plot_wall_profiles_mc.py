@@ -117,7 +117,7 @@ def plot_wall_profiles():
     plt.suptitle('Hard-Sphere Density Profiles at Planar Hard Wall\n(MC: Davidchack, Laird, Roth 2016)',
                  fontsize=14, fontweight='bold')
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/wall_profiles_mc.png', dpi=150, bbox_inches='tight')
+    plt.savefig('outputs/wall_profiles_mc.png', dpi=150, bbox_inches='tight')
     print("Saved: wall_profiles_mc.png")
     plt.close()
 
@@ -183,7 +183,7 @@ def plot_contact_density():
     plt.suptitle('Contact Density: Theory vs Monte Carlo',
                  fontsize=14, fontweight='bold')
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/contact_density_comparison.png', dpi=150, bbox_inches='tight')
+    plt.savefig('outputs/contact_density_comparison.png', dpi=150, bbox_inches='tight')
     print("Saved: contact_density_comparison.png")
     plt.close()
 
@@ -219,7 +219,7 @@ def plot_all_profiles_combined():
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/wall_profiles_all.png', dpi=150, bbox_inches='tight')
+    plt.savefig('outputs/wall_profiles_all.png', dpi=150, bbox_inches='tight')
     print("Saved: wall_profiles_all.png")
     plt.close()
 

@@ -27,25 +27,29 @@ Example
 __version__ = "1.0.0"
 __author__ = "Cony"
 
+# Enable double precision globally — required for all FMT physics
+import jax
+jax.config.update("jax_enable_x64", True)
+
 # Core components
-from cnfmt.core.grid import Grid
-from cnfmt.core.weights import FMTKernels
-from cnfmt.core.densities import WeightedDensities, WeightedDensityCalculator
-from cnfmt.core.thermodynamics import BulkThermodynamics
+from core.grid import Grid
+from core.weights import FMTKernels
+from core.densities import WeightedDensities, WeightedDensityCalculator
+from core.thermodynamics import BulkThermodynamics
 
 # Functionals
-from cnfmt.functionals.lutsko import LutskoFunctional
-from cnfmt.functionals.potentials import GrandPotential, TestParticlePotential
+from functionals.lutsko import LutskoFunctional
+from functionals.potentials import GrandPotential, TestParticlePotential
 
 # Neural networks
-from cnfmt.neural.network import ConditionalNetwork
+from neural.network import ConditionalNetwork
 
 # Solvers
-from cnfmt.solvers.minimizer import DensityMinimizer
-from cnfmt.solvers.test_particle import TestParticleCalculator
+from solvers.minimizer import DensityMinimizer
+from solvers.test_particle import TestParticleCalculator
 
 # Training
-from cnfmt.training.config import TrainingConfig
+from training.config import TrainingConfig
 
 __all__ = [
     # Core

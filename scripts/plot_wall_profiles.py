@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
 
-from cnfmt.solvers.wall_profile import (
+from solvers.wall_profile import (
     WallProfileCalculator, 
     WallProfileConfig,
     compute_wall_profiles,

@@ -34,7 +34,7 @@ def main():
     
     if args.mode in ['all', 'compare']:
         print("\n>>> Comparing Optimized vs CNN...")
-        subprocess.run([sys.executable, '-m', 'cnfmt.scripts.compare_methods'])
+        subprocess.run([sys.executable, '-m', 'cnfmt.scripts.train_bulk', '--compare'])
     
     if args.mode in ['all', 'lj']:
         print("\n>>> Running LJ phase diagram...")

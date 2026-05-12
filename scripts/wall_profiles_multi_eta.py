@@ -7,8 +7,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-jax.config.update("jax_enable_x64", True)
-
 import sys
 sys.path.insert(0, '/mnt/user-data/uploads')
 from fmt_1d_wbii_tensor import WallSolver, RosenfeldFMT, WhiteBearIIFMT, ModifiedRSLT
@@ -145,7 +143,7 @@ plt.suptitle('Hard Sphere Density Profiles at Planar Hard Wall\n(FMT vs Monte Ca
              fontsize=14, fontweight='bold', y=0.98)
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
-plt.savefig('/mnt/user-data/outputs/wall_profiles.png', dpi=150, bbox_inches='tight')
+plt.savefig('outputs/wall_profiles.png', dpi=150, bbox_inches='tight')
 print("Saved: wall_profiles.png")
 plt.close()
 
