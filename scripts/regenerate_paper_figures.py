@@ -52,14 +52,14 @@ def fig1_wall_profiles(output_dir: Path):
         ('Rosenfeld', RosenfeldFMT()),
         ('White Bear II', WhiteBearIIFMT()),
         ('mRSLT', ModifiedRSLT()),
-        (r'G\"ul et al.', esFMT_Tensor(A=1.3, B=-1.0)),
+        ('Gül et al.', esFMT_Tensor(A=1.3, B=-1.0)),
     ]
 
     colors = {
         'Rosenfeld': 'C0',
         'White Bear II': 'C1',
         'mRSLT': 'C2',
-        r'G\"ul et al.': 'C3',
+        'Gül et al.': 'C3',
     }
 
     all_results = {}
@@ -140,7 +140,7 @@ def fig2_validation(output_dir: Path):
         ('White Bear II', WhiteBearIIFMT()),
         ('mRSLT', ModifiedRSLT()),
         ('esFMT(1,-1)', esFMT_Tensor(A=1.0, B=-1.0)),
-        (r'G\"ul et al.', esFMT_Tensor(A=1.3, B=-1.0)),
+        ('Gül et al.', esFMT_Tensor(A=1.3, B=-1.0)),
     ]
     colors_list = ['C0', 'C1', 'C2', 'C4', 'C3']
 

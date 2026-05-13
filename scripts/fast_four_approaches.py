@@ -156,7 +156,7 @@ def plot_comparison(results: Dict, output_path: str):
     ax.plot(etas, A4, color=c4, lw=2, label='Approach 4')
     ax.axhline(1.5, color='gray', ls='--', alpha=0.7, label='Rosenfeld')
     ax.axhline(1.0, color='orange', ls='--', alpha=0.7, label='Lutsko')
-    ax.axhline(1.3, color='brown', ls=':', lw=2, label='Gul et al.')
+    ax.axhline(1.3, color='brown', ls=':', lw=2, label='Gül et al.')
     ax.set_xlabel('eta')
     ax.set_ylabel('A(eta)')
     ax.set_title('(b) Learned Parameter A')
@@ -171,7 +171,7 @@ def plot_comparison(results: Dict, output_path: str):
     ax.plot(etas, B3, color=c3, lw=2, label='Approach 3')
     ax.plot(etas, B4, color=c4, lw=2, label='Approach 4')
     ax.axhline(0.0, color='gray', ls='--', alpha=0.7, label='Rosenfeld/Lutsko')
-    ax.axhline(-1.0, color='brown', ls=':', lw=2, label='Gul et al.')
+    ax.axhline(-1.0, color='brown', ls=':', lw=2, label='Gül et al.')
     ax.axhline(0.0, color='cyan', ls='--', alpha=0.5, label='White Bear')
     ax.set_xlabel('eta')
     ax.set_ylabel('B(eta)')
@@ -191,10 +191,10 @@ def plot_comparison(results: Dict, output_path: str):
     ax.plot(etas, C2, color=c2, lw=2, label='Approach 2')
     ax.plot(etas, C3, color=c3, lw=2, label='Approach 3')
     ax.plot(etas, C4, color=c4, lw=2, label='Approach 4')
-    ax.axhline(3.0, color='gray', ls='--', alpha=0.7, label='PY line (C=0)')
+    ax.axhline(3.0, color='gray', ls='--', alpha=0.7, label='PY (C=3)')
     ax.axhline(0.0, color='gray', ls='-', alpha=0.5)
     ax.axhline(-1, color='orange', ls='--', alpha=0.7, label='Lutsko')
-    ax.axhline(-0.6, color='brown', ls=':', lw=2, label='Gul et al.')
+    ax.axhline(-0.6, color='brown', ls=':', lw=2, label='Gül et al.')
     ax.set_xlabel('eta')
     ax.set_ylabel('C = 8A + 2B - 9')
     ax.set_title('(d) Constraint Parameter')
@@ -211,7 +211,7 @@ def plot_comparison(results: Dict, output_path: str):
     Z3 = np.array([float(Z_lutsko(e, A3[i], B3[i])) for i, e in enumerate(etas)])
     Z4 = np.array([float(Z_lutsko(e, A4[i], B4[i])) for i, e in enumerate(etas)])
 
-    ax.plot(etas, Z_cs, 'k-', lw=2.5, label='CS (exact)')
+    ax.plot(etas, Z_cs, 'k-', lw=2.5, label='CS (reference)')
     ax.plot(etas, Z1, color=c1, ls='--', lw=2, label='Approach 1')
     ax.plot(etas, Z2, color=c2, ls='--', lw=2, label='Approach 2')
     ax.plot(etas, Z3, color=c3, ls='--', lw=2, label='Approach 3')
@@ -231,7 +231,7 @@ def plot_comparison(results: Dict, output_path: str):
     mu3 = np.array([float(mu_ex_lutsko(e, A3[i], B3[i])) for i, e in enumerate(etas)])
     mu4 = np.array([float(mu_ex_lutsko(e, A4[i], B4[i])) for i, e in enumerate(etas)])
 
-    ax.plot(etas, mu_cs, 'k-', lw=2.5, label='CS (exact)')
+    ax.plot(etas, mu_cs, 'k-', lw=2.5, label='CS (reference)')
     ax.plot(etas, mu1, color=c1, ls='--', lw=2, label='Approach 1')
     ax.plot(etas, mu2, color=c2, ls='--', lw=2, label='Approach 2')
     ax.plot(etas, mu3, color=c3, ls='--', lw=2, label='Approach 3')
@@ -251,7 +251,7 @@ def plot_comparison(results: Dict, output_path: str):
     chi3 = np.array([float(chi_T_lutsko(e, A3[i], B3[i])) for i, e in enumerate(etas)])
     chi4 = np.array([float(chi_T_lutsko(e, A4[i], B4[i])) for i, e in enumerate(etas)])
 
-    ax.plot(etas, chi_cs, 'k-', lw=2.5, label='CS (exact)')
+    ax.plot(etas, chi_cs, 'k-', lw=2.5, label='CS (reference)')
     ax.plot(etas, chi1, color=c1, ls='--', lw=2, label='Approach 1')
     ax.plot(etas, chi2, color=c2, ls='--', lw=2, label='Approach 2')
     ax.plot(etas, chi3, color=c3, ls='--', lw=2, label='Approach 3')
@@ -273,7 +273,7 @@ def plot_comparison(results: Dict, output_path: str):
     contact3 = rho_bulk * Z3
     contact4 = rho_bulk * Z4
 
-    ax.plot(etas, contact_cs, 'k-', lw=2.5, label='CS (exact)')
+    ax.plot(etas, contact_cs, 'k-', lw=2.5, label='CS (reference)')
     ax.plot(etas, contact1, color=c1, ls='--', lw=2, label='Approach 1')
     ax.plot(etas, contact2, color=c2, ls='--', lw=2, label='Approach 2')
     ax.plot(etas, contact3, color=c3, ls='--', lw=2, label='Approach 3')
@@ -308,7 +308,7 @@ def plot_comparison(results: Dict, output_path: str):
     ax.plot(A4, B4, color=c4, lw=2, label='Approach 4')
 
     ax.plot(1.0, 0.0, 'o', color='orange', ms=10, mew=2, mfc='orange', label='Lutsko')
-    ax.plot(1.3, -1.0, '*', color='brown', ms=12, mew=2, label='Gul et al.')
+    ax.plot(1.3, -1.0, '*', color='brown', ms=12, mew=2, label='Gül et al.')
     ax.plot(1.5, 0.0, 's', color='gray', ms=8, mew=2, mfc='gray', label='Rosenfeld')
 
     ax.set_xlabel('A')
