@@ -190,3 +190,139 @@ class ConditionalNetwork(eqx.Module):
     def __repr__(self) -> str:
         return (f"ConditionalNetwork(n_features={self.n_features}, "
                 f"hidden_dim={self.hidden_dim}, n_hidden={self.n_hidden})")
+
+
+class NonlocalConditionalNetwork(eqx.Module):
+    """
+    Pointwise MLP mapping nonlocal features → (A, B) at each grid point.
+
+    Applied identically at every spatial position (weight sharing),
+    which guarantees translational equivariance. The same trained
+    network works in 1D, 2D, or 3D.
+
+    Input features (per grid point):
+        1. η(r) / 0.5        — normalized local packing fraction
+        2. η̄(r) / 0.5        — normalized nonlocal packing fraction
+        3. |∇η(r)|            — gradient magnitude
+        4. ∇²η(r)             — Laplacian
+        5. (η - η̄) / |η̄|     — relative deviation from nonlocal average
+
+    Output: A ∈ [A_min, A_max], B ∈ [B_min, B_max] via tanh bounds.
+
+    Parameters
+    ----------
+    key : PRNGKey
+        Random key for initialization
+    n_features : int
+        Number of input features per point (default: 5)
+    hidden_dim : int
+        Hidden layer width (default: 32, smaller than ConditionalNetwork
+        since this is applied at every grid point)
+    n_hidden : int
+        Number of hidden layers (default: 3)
+    A_bounds : tuple
+        (min, max) for A parameter
+    B_bounds : tuple
+        (min, max) for B parameter
+
+    Example
+    -------
+    >>> key = jax.random.PRNGKey(0)
+    >>> net = NonlocalConditionalNetwork(key)
+    >>> features = jnp.ones((1024, 5))  # 1024 grid points, 5 features each
+    >>> A, B = net(features)            # A: (1024,), B: (1024,)
+    """
+
+    # Network layers
+    input_proj: eqx.nn.Linear
+    hidden_layers: List[eqx.nn.Linear]
+    layer_norms: List[eqx.nn.LayerNorm]
+    output_layer: eqx.nn.Linear
+
+    # Architecture (static)
+    n_features: int = eqx.field(static=True)
+    hidden_dim: int = eqx.field(static=True)
+    n_hidden: int = eqx.field(static=True)
+
+    # Output bounds (static)
+    A_center: float = eqx.field(static=True)
+    A_scale: float = eqx.field(static=True)
+    B_center: float = eqx.field(static=True)
+    B_scale: float = eqx.field(static=True)
+
+    def __init__(self, key: jax.random.PRNGKey,
+                 n_features: int = 5,
+                 hidden_dim: int = 32,
+                 n_hidden: int = 3,
+                 A_bounds: Tuple[float, float] = (0.5, 2.0),
+                 B_bounds: Tuple[float, float] = (-2.0, 1.0)):
+        """Initialize nonlocal conditional network."""
+
+        self.n_features = n_features
+        self.hidden_dim = hidden_dim
+        self.n_hidden = n_hidden
+
+        # Output parameterization: center + scale * tanh(raw)
+        self.A_center = (A_bounds[0] + A_bounds[1]) / 2
+        self.A_scale = (A_bounds[1] - A_bounds[0]) / 2
+        self.B_center = (B_bounds[0] + B_bounds[1]) / 2
+        self.B_scale = (B_bounds[1] - B_bounds[0]) / 2
+
+        keys = jax.random.split(key, n_hidden + 3)
+
+        # Input projection
+        self.input_proj = eqx.nn.Linear(n_features, hidden_dim, key=keys[0])
+
+        # Hidden layers
+        self.hidden_layers = []
+        self.layer_norms = []
+        for i in range(n_hidden):
+            self.hidden_layers.append(
+                eqx.nn.Linear(hidden_dim, hidden_dim, key=keys[i + 1])
+            )
+            self.layer_norms.append(eqx.nn.LayerNorm(hidden_dim))
+
+        # Output layer
+        self.output_layer = eqx.nn.Linear(hidden_dim, 2, key=keys[-1])
+
+    def __call__(self, features: Array) -> Tuple[Array, Array]:
+        """
+        Forward pass: features → (A, B) pointwise.
+
+        Parameters
+        ----------
+        features : Array
+            Shape (N, n_features) where N is number of grid points,
+            or (..., n_features) for batched evaluation.
+
+        Returns
+        -------
+        A, B : Array
+            Lutsko parameters, shape (N,) or (...)
+        """
+        # Input projection
+        x = jax.vmap(self.input_proj)(features)
+        x = jax.nn.gelu(x)
+
+        # Hidden layers with residual connections and layer norm
+        for i, (layer, norm) in enumerate(zip(self.hidden_layers, self.layer_norms)):
+            x_res = x
+            x = jax.vmap(layer)(x)
+            x = jax.vmap(norm)(x)
+            x = jax.nn.gelu(x)
+            if i > 0:
+                x = x + 0.5 * x_res
+
+        # Output
+        out = jax.vmap(self.output_layer)(x)
+        A_raw, B_raw = out[..., 0], out[..., 1]
+
+        # Tanh bounds
+        A = self.A_center + self.A_scale * jnp.tanh(A_raw)
+        B = self.B_center + self.B_scale * jnp.tanh(B_raw)
+
+        return A, B
+
+    def __repr__(self) -> str:
+        return (f"NonlocalConditionalNetwork(n_features={self.n_features}, "
+                f"hidden_dim={self.hidden_dim}, n_hidden={self.n_hidden})")

@@ -81,7 +81,8 @@ class FMTKernels(eqx.Module):
         """
         self.R = R
         k = grid.k_abs
-        eps = 1e-12  # Regularization for k→0 limit
+        # Must be larger than sqrt(grid regularization) = sqrt(1e-14) ≈ 3e-7
+        eps = 1e-6  # Threshold for k→0 analytical limit
         
         # ──────────────────────────────────────────────────────────
         # Scalar weights
@@ -93,16 +94,16 @@ class FMTKernels(eqx.Module):
         self.w3_hat = jnp.where(
             k < eps,
             (4.0 / 3.0) * jnp.pi * R**3,
-            4.0 * jnp.pi * (jnp.sin(k * R) - k * R * jnp.cos(k * R)) / (k**3 + eps)
+            4.0 * jnp.pi * (jnp.sin(k * R) - k * R * jnp.cos(k * R)) / jnp.where(k < eps, 1.0, k**3)
         )
-        
+
         # w₂: Surface delta
         # ŵ₂(k) = (4πR/k)·sin(kR)
         # k→0 limit: 4πR²
         self.w2_hat = jnp.where(
             k < eps,
             4.0 * jnp.pi * R**2,
-            4.0 * jnp.pi * R * jnp.sin(k * R) / (k + eps)
+            4.0 * jnp.pi * R * jnp.sin(k * R) / jnp.where(k < eps, 1.0, k)
         )
         
         # Scaled weights
