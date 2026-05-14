@@ -2,344 +2,212 @@
 
 [![JAX](https://img.shields.io/badge/JAX-Accelerated-blue)](https://github.com/google/jax)
 [![Equinox](https://img.shields.io/badge/Equinox-Neural_Networks-green)](https://github.com/patrick-kidger/equinox)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-brightgreen)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A JAX/Equinox implementation of **Fundamental Measure Theory (FMT)** for classical Density Functional Theory (cDFT) of hard-sphere fluids, with neural network enhancements for learning optimal functional parameters.
+A JAX/Equinox implementation of **Fundamental Measure Theory (FMT)** for classical Density Functional Theory (cDFT) of hard-sphere fluids, enhanced with neural networks that learn optimal functional parameters.
+
+The package trains neural networks to predict density-dependent Lutsko parameters A(eta) and B(eta), combining classical FMT functionals (Rosenfeld, White Bear II, Modified RSLT) with data-driven optimization against Carnahan-Starling thermodynamics and Monte Carlo wall profiles.
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
 - [Installation](#installation)
-- [Package Structure](#package-structure)
-- [Theory](#theory)
-- [Implemented Methods](#implemented-methods)
-- [Usage Examples](#usage-examples)
-- [Scripts and Figures](#scripts-and-figures)
-- [Key Results](#key-results)
+- [Quick Start](#quick-start)
+- [Running Experiments](#running-experiments)
+- [Using the Package in Your Code](#using-the-package-in-your-code)
+- [Project Structure](#project-structure)
+- [Output Files](#output-files)
+- [Troubleshooting](#troubleshooting)
 - [References](#references)
-
----
-
-## Overview
-
-**CNFMT** implements the Lutsko framework for Fundamental Measure Theory, which provides a unified description of hard-sphere fluids through density-dependent parameters A(η) and B(η). The package combines:
-
-1. **Classical FMT functionals** (Rosenfeld, White Bear II, Modified RSLT)
-2. **Neural network parameterization** for learning optimal A(η), B(η)
-3. **Lennard-Jones extension** via WCA decomposition and mean-field attraction
-4. **Validated solvers** for density profiles at hard walls
-
-The key innovation is the **esFMT (extended scaled FMT)** framework where the third contribution to the free energy density is parameterized as:
-
-```
-Φ₃ = [A·(n₂³ - 3n₂n⃗₂² + ...) + B·(n₂³ - 3n₂·Tr(T²) + ...)] / (24π(1-η)²)
-```
-
-Different choices of (A, B) recover different classical functionals and equations of state.
-
----
-
-## Features
-
-- ✅ **Multiple FMT Functionals**: Rosenfeld, White Bear II, Modified RSLT, esFMT
-- ✅ **Neural Network A(η), B(η)**: Learn optimal parameters from thermodynamic constraints
-- ✅ **Validated 1D/3D Solvers**: Accurate wall profiles matching Monte Carlo data
-- ✅ **Lennard-Jones Phase Diagram**: Vapor-liquid coexistence via Lutsko method
-- ✅ **JAX Acceleration**: GPU/TPU compatible, automatic differentiation
-- ✅ **Comprehensive Visualization**: Publication-ready figures
+- [License](#license)
 
 ---
 
 ## Installation
 
-### Requirements
+### 1. Create a Conda Environment (Recommended)
 
 ```bash
-pip install jax jaxlib equinox optax numpy scipy matplotlib
+conda create -n cnfmt python=3.10
+conda activate cnfmt
 ```
 
-### Install Package
+### 2. Install JAX
+
+JAX installation depends on your hardware. Pick the one that matches your setup:
+
+**CPU only (macOS / Linux):**
+```bash
+pip install jax jaxlib
+```
+
+**GPU (CUDA 12, Linux):**
+```bash
+pip install jax[cuda12]
+```
+
+**Apple Silicon (macOS, Metal):**
+```bash
+pip install jax-metal
+```
+
+See the [JAX installation guide](https://jax.readthedocs.io/en/latest/installation.html) for other configurations.
+
+### 3. Install CNFMT
+
+Clone the repository and install in editable mode:
 
 ```bash
-git clone https://github.com/your-repo/cnfmt.git
+git clone https://github.com/username/cnfmt.git
 cd cnfmt
 pip install -e .
 ```
 
----
+This installs all required dependencies automatically:
 
-## Package Structure
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `jax` | >= 0.4.0 | Array computation, automatic differentiation |
+| `jaxlib` | >= 0.4.0 | JAX backend |
+| `equinox` | >= 0.11.0 | Neural network modules |
+| `optax` | >= 0.1.0 | Optimizers (Adam, L-BFGS) |
+| `numpy` | >= 1.21.0 | Numerical utilities |
+| `matplotlib` | >= 3.5.0 | Plotting and figure generation |
 
+**Optional dev tools** (for formatting and testing):
+
+```bash
+pip install -e ".[dev]"
 ```
-cnfmt/
-│
-├── core/                    # Core computational modules
-│   ├── grid.py              # 3D computational grid with FFT support
-│   ├── weights.py           # FMT weight functions (scalar, vector, tensor)
-│   ├── densities.py         # Weighted density calculations
-│   └── thermodynamics.py    # EOS, chemical potential, compressibility
-│
-├── functionals/             # Free energy functionals
-│   ├── lutsko.py            # Lutsko esFMT with (A, B) parameters
-│   └── potentials.py        # LJ potential with WCA decomposition
-│
-├── neural/                  # Neural network components
-│   ├── network.py           # MLP for A(η), B(η) or A(η, T*)
-│   └── features.py          # Feature engineering (η, η², log(1-η), ...)
-│
-├── solvers/                 # DFT solvers
-│   ├── fmt_1d_wbii_tensor.py   # ★ Validated 1D FMT (RECOMMENDED)
-│   ├── fmt_3d_tensor.py        # Full 3D FMT with tensor terms
-│   ├── wall_profile.py         # Wall profile calculator
-│   ├── minimizer.py            # Density minimization (Adam, L-BFGS)
-│   └── test_particle.py        # Test particle insertion
-│
-├── training/                # Training infrastructure
-│   ├── losses.py            # Loss functions (EOS, contact, δμ, δχ)
-│   ├── optimizers.py        # Optimizer configurations
-│   ├── config.py            # Training hyperparameters
-│   └── checkpoints.py       # Model saving/loading
-│
-├── lj/                      # Lennard-Jones module
-│   └── phase_diagram.py     # VLE coexistence, NN training
-│
-├── scripts/                 # Runnable scripts for figures
-│   ├── fast_four_approaches.py      # Compare training approaches
-│   ├── wall_profiles_multi_eta.py   # Wall profiles at multiple η
-│   ├── fmt_comprehensive_all_methods.py  # FMT comparison
-│   └── ...
-│
-└── utils/                   # Utilities
-    ├── plotting.py          # Visualization functions
-    └── analysis.py          # Data analysis tools
+
+This adds `pytest`, `black`, and `isort`.
+
+### 4. Verify Installation
+
+```bash
+python -c "import cnfmt; print(f'CNFMT v{cnfmt.__version__} ready')"
 ```
+
+You should see: `CNFMT v1.0.0 ready`
 
 ---
 
-## Theory
+## Quick Start
 
-### Fundamental Measure Theory (FMT)
+Run the fast training comparison to verify everything works (takes about 2 minutes):
 
-FMT expresses the excess free energy of hard spheres as a functional of **weighted densities**:
-
-```
-F_ex[ρ] = ∫ Φ(n_α(r)) dr
+```bash
+python -m cnfmt.scripts.fast_four_approaches --fast
 ```
 
-where the weighted densities are convolutions of the density with geometric weight functions:
+This trains four different approaches for learning A(eta), B(eta) and saves a 9-panel comparison figure to `outputs/`.
 
-| Density | Symbol | Definition | Physical Meaning |
-|---------|--------|------------|------------------|
-| Packing fraction | n₃ = η | ∫ρ(r')w₃(r-r')dr' | Local volume fraction |
-| Surface | n₂ | ∫ρ(r')w₂(r-r')dr' | Surface area density |
-| Mean curvature | n₁ | n₂/(4πR) | Curvature contribution |
-| Gaussian curvature | n₀ | n₂/(4πR²) | Topological term |
-| Vector | n⃗₂ | ∫ρ(r')w⃗₂(r-r')dr' | Orientational density |
-| **Tensor** | **T** | ∫ρ(r')w_T(r-r')dr' | Anisotropy (traceless) |
+---
 
-### Weight Functions
+## Running Experiments
 
-For hard spheres of radius R = σ/2:
+All scripts are run from the **repository root** using `python -m cnfmt.scripts.<name>`. Figures are saved to the `outputs/` directory.
 
-| Weight | Real Space | Fourier Space |
-|--------|------------|---------------|
-| w₃(r) | Θ(R - \|r\|) | (4π/k³)[sin(kR) - kR·cos(kR)] |
-| w₂(r) | δ(\|r\| - R) | 4πR²·sin(kR)/(kR) |
-| w⃗₂(r) | (r/\|r\|)δ(\|r\| - R) | -4πiR·j₁(kR)·k̂ |
-| w_T(r) | (rr/r² - I/3)δ(\|r\| - R) | 4πR²·3j₂(kR)·(k̂k̂ - I/3) |
+### Main Experiments
 
-### Free Energy Density
+#### 1. Compare Training Approaches
 
-The free energy density has three contributions:
+Trains neural networks with four different loss functions and compares learned parameters, thermodynamics, and wall contact densities.
 
-```
-Φ = Φ₁ + Φ₂ + Φ₃
+```bash
+# Quick version (~2 min, 100 iterations)
+python -m cnfmt.scripts.fast_four_approaches --fast
+
+# Full version (~10 min, 500 iterations)
+python -m cnfmt.scripts.fast_four_approaches
 ```
 
-**Φ₁ — Ideal Cavity Term:**
-```
-Φ₁ = -n₀ ln(1 - η)
-```
+**Output:** `outputs/four_approaches_comparison.png` (9-panel figure)
 
-**Φ₂ — Two-Body Correlations:**
-```
-Φ₂ = (n₁n₂ - n⃗₁·n⃗₂) / (1 - η)
-```
+#### 2. Wall Density Profiles
 
-**Φ₃ — Three-Body Correlations (various formulations):**
+Computes hard-sphere density profiles at a planar hard wall for multiple packing fractions, compared against Monte Carlo data from Davidchack et al. (2016).
 
-| Formulation | Φ₃ Expression |
-|-------------|---------------|
-| Rosenfeld | (n₂³ - 3n₂n⃗₂²) / (24π(1-η)²) |
-| White Bear II | φ₃(η)·(n₂³ - 3n₂n⃗₂²) / (24π(1-η)²) |
-| esFMT (Lutsko) | [A·term_A + B·term_B] / (24π(1-η)²) |
-
-### Lutsko (A, B) Parameterization
-
-The esFMT framework parameterizes Φ₃ with two parameters:
-
-```
-Φ₃ = [A·term_A + B·term_B] / (24π(1-η)²)
+```bash
+python -m cnfmt.scripts.wall_profiles_multi_eta
 ```
 
-where:
-- **term_A** = n₂³ - 3n₂(n⃗₂)² + 3(n⃗₂·T·n⃗₂) - Tr(T³)
-- **term_B** = n₂³ - 3n₂·Tr(T²) + 2·Tr(T³)
+**Output:** `outputs/wall_profiles.png` (4-panel figure at eta = 0.367, 0.393, 0.449, 0.492)
 
-The **constraint parameter** C = 8A + 2B - 9 determines the bulk equation of state:
+#### 3. FMT Method Comparison
 
-| C Value | EOS | Functional |
-|---------|-----|------------|
-| C = +3 | Percus-Yevick | Rosenfeld (A=1.5, B=0) |
-| C = 0 | Near PY | Transition point |
-| C = -1 | Lutsko baseline | (A=1, B=0) |
-| C = -3 | Carnahan-Starling | Exact bulk thermodynamics |
+Compares all implemented FMT functionals: Rosenfeld, White Bear II, Modified RSLT, esFMT, and Gul et al. Includes density profiles, contact densities, and direct correlation functions.
 
-### White Bear II Corrections
-
-For accurate bulk thermodynamics, WBII introduces correction functions:
-
-```
-φ₂(η) = 1 - [2η - 3η² + 2η³ + 2(1-η)²ln(1-η)] / (3η²)
-
-φ₃(η) = 1 - [2η - η² + 2(1-η)ln(1-η)] / (3η²)
+```bash
+python -m cnfmt.scripts.fmt_comprehensive_all_methods
 ```
 
-These ensure the **Carnahan-Starling equation of state** in bulk:
+**Output:** `outputs/fmt_comprehensive_all_methods.png` (4-panel figure)
 
-```
-Z_CS = (1 + η + η² - η³) / (1 - η)³
-```
+#### 4. Lennard-Jones Phase Diagram
 
-### Direct Correlation Function
+Computes vapor-liquid coexistence curves using the Lutsko FMT framework with WCA decomposition. Also trains a neural network for temperature-dependent A(eta, T*), B(eta, T*).
 
-The one-body direct correlation function is computed via the chain rule:
-
-```
-c⁽¹⁾(r) = -δF_ex/δρ(r) = -Σ_α (∂Φ/∂n_α ★ w_α)
+```bash
+python -m cnfmt.lj.phase_diagram
 ```
 
-For **Rosenfeld FMT**, c(r) equals the **Percus-Yevick** result exactly:
+**Output:**
+- `outputs/lj_phase_diagram_lutsko.png` (4-panel: coexistence, P, mu, free energy)
+- `outputs/lj_phase_diagram_nn.png` (6-panel: NN training and learned parameters)
 
-```
-c_PY(r) = -α + β(r/σ) - γ(r/σ)³   for r < σ
-        = 0                        for r ≥ σ
-```
+### Additional Scripts
 
-where:
-- α = (1 + 2η)² / (1-η)⁴
-- β = 6η(1 + η/2)² / (1-η)⁴
-- γ = η(1 + 2η)² / (2(1-η)⁴)
+| Script | Command | Description |
+|--------|---------|-------------|
+| NN wall analysis | `python -m cnfmt.scripts.nn_wall_analysis` | Wall profiles with trained neural network |
+| NN wall profiles | `python -m cnfmt.scripts.nn_wall_profiles` | Neural network density profiles |
+| Three-phase training | `python -m cnfmt.scripts.train_three_phase` | Multi-phase training (bulk, test-particle, wall) |
+| Test particle training | `python -m cnfmt.scripts.train_test_particle` | Train with test-particle insertion loss |
+| Bulk training | `python -m cnfmt.scripts.train_bulk` | Train on bulk thermodynamics only |
+| Feature ablation | `python -m cnfmt.scripts.feature_ablation` | Test different input feature sets |
+| Regenerate paper figures | `python -m cnfmt.scripts.regenerate_paper_figures` | Regenerate all publication figures |
 
-### Lennard-Jones Extension
+### Run All Experiments
 
-For Lennard-Jones fluids, we use WCA decomposition:
-
-```
-v_LJ(r) = v_rep(r) + w_att(r)
-```
-
-**Barker-Henderson diameter** (temperature-dependent):
-```
-d(T) = ∫₀^r_min [1 - exp(-βv_rep(r))] dr
-```
-
-**Mean-field attraction:**
-```
-a = ∫ 4πr² w_att(r) dr ≈ -14.56 εσ³  (for r_c = 3σ)
-```
-
-**Total free energy:**
-```
-f = f_id + f_HS(η_eff) + (a/2)ρ²/kT
+```bash
+python -m cnfmt.scripts.run_all
 ```
 
 ---
 
-## Implemented Methods
+## Using the Package in Your Code
 
-### FMT Functionals
-
-| Class | A | B | C | Description |
-|-------|---|---|---|-------------|
-| `RosenfeldFMT` | 1.5 | 0.0 | +3 | Original FMT (1989), PY EOS |
-| `WhiteBearIIFMT` | - | - | -3 | φ₂, φ₃ corrections, CS EOS |
-| `ModifiedRSLT` | - | - | - | (1-ξ²)³ factor, positive definite |
-| `esFMT_Tensor` | A | B | 8A+2B-9 | General (A,B) with tensor terms |
-
-### Neural Network Architectures
-
-**Hard-Sphere Network: A(η), B(η)**
-```python
-class SimpleNetwork:
-    input_features: [η, η², η³, log(1-η), 1/(1-η)]
-    hidden_layers: [32, 32] with SiLU activation
-    output: [A, B] with sigmoid constraints
-        A ∈ [0.8, 1.5]
-        B ∈ [-1.5, 0.0]
-```
-
-**Lennard-Jones Network: A(η, T*), B(η, T*)**
-```python
-class ABNetwork:
-    input_features: [η, T*, η², T*², η·T*, log(1-η), 1/(1-η)]
-    hidden_layers: [32, 32] with SiLU activation
-    output: [A, B] with constraints
-```
-
-### Training Approaches
-
-| # | Name | Loss Function | Target |
-|---|------|--------------|--------|
-| 1 | CS EOS | \|Z - Z_CS\|² + λ\|μ - μ_CS\|² | Bulk thermodynamics |
-| 2 | δμ, δχ | (δμ/μ)² + (δχ/χ)² | DFT-bulk consistency |
-| 3 | Contact | \|Z_DFT - Z_CS\|² / Z_CS² | Wall contact density |
-| 4 | Combined | L_EOS + λ·L_contact | Multi-objective |
-
-### Solvers
-
-| Solver | Geometry | Method | Key Features |
-|--------|----------|--------|--------------|
-| `WallSolver` | 1D planar | Picard iteration | Real-space convolution, tensor weights |
-| `DFTSolver3D` | Full 3D | Picard iteration | FFT convolution, periodic BC |
-| `DensityMinimizer` | General | Adam/L-BFGS | Gradient-based optimization |
-
----
-
-## Usage Examples
-
-### 1. Compute Wall Density Profile
+### Compute a Wall Density Profile
 
 ```python
 from cnfmt.solvers import WallSolver, RosenfeldFMT, WhiteBearIIFMT
 
-# Create solver (1024 grid points, box length 6σ)
+# Create solver (1024 grid points, box length 6 sigma)
 solver = WallSolver(nz=1024, Lz=6.0, R=0.5)
 
-# Solve for packing fraction η = 0.367
+# Solve for packing fraction eta = 0.367
 result = solver.solve(
-    eta=0.367, 
-    functional=RosenfeldFMT(), 
-    max_iter=3000, 
+    eta=0.367,
+    functional=RosenfeldFMT(),
+    max_iter=3000,
     tol=1e-8
 )
 
 print(f"Contact density: {result['contact']:.3f}")
-# Output: Contact density: 5.835
 
 # Access full profile
-z = result['z']           # Position array
-rho_norm = result['rho_norm']  # ρ(z)/ρ_bulk
+z = result['z']               # Position array
+rho_norm = result['rho_norm']  # rho(z) / rho_bulk
 ```
 
-### 2. Compare Multiple Functionals
+### Compare Multiple Functionals
 
 ```python
 from cnfmt.solvers import (
-    WallSolver, RosenfeldFMT, WhiteBearIIFMT, 
+    WallSolver, RosenfeldFMT, WhiteBearIIFMT,
     ModifiedRSLT, esFMT_Tensor
 )
 
@@ -351,7 +219,6 @@ functionals = {
     'White Bear II': WhiteBearIIFMT(),
     'Modified RSLT': ModifiedRSLT(),
     'esFMT(1,-1)': esFMT_Tensor(A=1.0, B=-1.0),
-    'Gül et al.': esFMT_Tensor(A=1.3, B=-1.0),
 }
 
 for name, func in functionals.items():
@@ -359,7 +226,7 @@ for name, func in functionals.items():
     print(f"{name}: contact = {result['contact']:.3f}")
 ```
 
-### 3. Train Neural Network A(η), B(η)
+### Train a Neural Network for A(eta), B(eta)
 
 ```python
 import jax
@@ -367,154 +234,154 @@ import jax.numpy as jnp
 import equinox as eqx
 import optax
 
-# Define network
-class SimpleNetwork(eqx.Module):
-    layers: list
-    
-    def __init__(self, key):
-        keys = jax.random.split(key, 4)
-        self.layers = [
-            eqx.nn.Linear(5, 32, key=keys[0]),
-            eqx.nn.Linear(32, 32, key=keys[1]),
-            eqx.nn.Linear(32, 2, key=keys[2]),
-        ]
-    
-    def __call__(self, x):
-        for layer in self.layers[:-1]:
-            x = jax.nn.silu(layer(x))
-        return self.layers[-1](x)
-    
-    def from_eta(self, eta):
-        features = jnp.array([
-            eta, eta**2, eta**3, 
-            jnp.log(1-eta+1e-10), 
-            1/(1-eta+1e-10)
-        ])
-        out = self(features)
-        A = 0.8 + 0.7 * jax.nn.sigmoid(out[0])
-        B = -1.5 + 1.5 * jax.nn.sigmoid(out[1])
-        return A, B
+from cnfmt import ConditionalNetwork, TrainingConfig
+from cnfmt.training import train_bulk_phase
 
-# Train
-network = SimpleNetwork(jax.random.PRNGKey(42))
-optimizer = optax.adamw(1e-3)
-# ... training loop
+# Create network and train
+key = jax.random.PRNGKey(42)
+network = ConditionalNetwork(key, n_features=5)
+
+config = TrainingConfig(n_epochs=500, lr=1e-3)
+network, losses = train_bulk_phase(network, config)
+
+# Predict parameters at a given packing fraction
+A, B = network.from_eta(0.3)
+print(f"A = {A:.3f}, B = {B:.3f}")
 ```
 
-### 4. Lennard-Jones Phase Diagram
+### Compute the LJ Phase Diagram
 
 ```python
 from cnfmt.lj.phase_diagram import LJPhaseDiagram, LJPotential
 
-# Create LJ potential with cutoff
 potential = LJPotential(sigma=1.0, epsilon=1.0, r_cut=3.0)
-
 print(f"BH diameter at T*=1: {potential.barker_henderson_diameter(1.0):.4f}")
-print(f"vdW parameter: {potential.vdw_parameter():.4f}")
 
-# Compute coexistence curve
-pd = LJPhaseDiagram(A=1.0, B=0.0)  # Lutsko parameters
+pd = LJPhaseDiagram(A=1.0, B=0.0)
 coex = pd.compute_coexistence_curve(T_min=0.7, T_max=1.35, n_points=50)
-
-print(f"Critical temperature: T*_c ≈ {coex['T'][-1]:.2f}")
-# Output: Critical temperature: T*_c ≈ 1.28
-```
-
-### 5. Direct Correlation Function
-
-```python
-import numpy as np
-
-def c_PY(r, eta, sigma=1.0):
-    """Percus-Yevick direct correlation function."""
-    alpha = (1 + 2*eta)**2 / (1 - eta)**4
-    beta = 6*eta * (1 + eta/2)**2 / (1 - eta)**4
-    gamma = eta * (1 + 2*eta)**2 / (2*(1 - eta)**4)
-    x = r / sigma
-    return np.where(r < sigma, -alpha + beta*x - gamma*x**3, 0.0)
-
-# Compute c(r) at η = 0.3
-r = np.linspace(0.01, 1.5, 200)
-c_r = c_PY(r, eta=0.3)
-
-# Fourier transform to get ĉ(k)
-def c_fourier(r, c_r, k_max=30.0):
-    k = np.linspace(0.01, k_max, 256)
-    dr = r[1] - r[0]
-    c_k = np.zeros_like(k)
-    for i, ki in enumerate(k):
-        c_k[i] = 4*np.pi * np.sum(r**2 * c_r * np.sin(ki*r)/(ki*r)) * dr
-    return k, c_k
+print(f"Critical temperature: T*_c = {coex['T'][-1]:.2f}")
 ```
 
 ---
 
-## Scripts and Figures
+## Project Structure
 
-### Quick Start — Generate All Key Figures
+```
+cnfmt/
+├── core/                          # Core computational modules
+│   ├── grid.py                    # 3D FFT-based computational grid
+│   ├── weights.py                 # FMT weight kernels in Fourier space
+│   ├── densities.py               # Weighted density calculator (FFT convolution)
+│   ├── thermodynamics.py          # EOS: Percus-Yevick, Carnahan-Starling, Lutsko
+│   └── constants.py               # Physical constants
+│
+├── functionals/                   # Free energy functionals
+│   ├── lutsko.py                  # Lutsko esFMT with (A, B) parameterization
+│   └── potentials.py              # Grand potential, LJ with WCA decomposition
+│
+├── neural/                        # Neural network components
+│   ├── network.py                 # ConditionalNetwork: eta -> (A, B)
+│   └── features.py                # Feature extraction from density fields
+│
+├── solvers/                       # DFT equation solvers
+│   ├── fmt_1d_wbii_tensor.py      # Validated 1D solver (recommended)
+│   ├── fmt_3d_tensor.py           # Full 3D solver with tensor terms
+│   ├── wall_profile.py            # Wall profile calculator
+│   ├── minimizer.py               # Adam / L-BFGS density optimization
+│   └── test_particle.py           # Test particle insertion
+│
+├── training/                      # Training infrastructure
+│   ├── losses.py                  # Loss functions (EOS, contact, consistency)
+│   ├── optimizers.py              # Optax optimizer wrappers
+│   ├── config.py                  # TrainingConfig dataclass
+│   └── checkpoints.py             # Model save / load
+│
+├── lj/                            # Lennard-Jones extension
+│   └── phase_diagram.py           # VLE coexistence, NN training for A(eta,T*)
+│
+├── scripts/                       # Runnable experiment scripts
+│   ├── fast_four_approaches.py    # Training approach comparison
+│   ├── wall_profiles_multi_eta.py # Wall profiles at multiple eta
+│   ├── fmt_comprehensive_all_methods.py  # FMT functional comparison
+│   ├── run_all.py                 # Run all experiments
+│   └── ...                        # Additional analysis scripts
+│
+├── utils/                         # Utilities
+│   ├── plotting.py                # Visualization helpers
+│   └── analysis.py                # Data analysis tools
+│
+├── data/                          # Reference data
+│   └── hswall/                    # Monte Carlo wall profiles (Davidchack 2016)
+│
+├── outputs/                       # Generated figures and logs
+├── figures/                       # Additional figure outputs
+├── setup.py                       # Package installation
+└── README.md                      # This file
+```
+
+---
+
+## Output Files
+
+All experiment scripts save their results to `outputs/`. Here are the key outputs:
+
+| File | Generated By | Description |
+|------|-------------|-------------|
+| `four_approaches_comparison.png` | `fast_four_approaches` | 9-panel training comparison |
+| `wall_profiles.png` | `wall_profiles_multi_eta` | Density profiles at 4 packing fractions |
+| `fmt_comprehensive_all_methods.png` | `fmt_comprehensive_all_methods` | FMT functional comparison |
+| `lj_phase_diagram_lutsko.png` | `lj.phase_diagram` | LJ vapor-liquid coexistence |
+| `lj_phase_diagram_nn.png` | `lj.phase_diagram` | NN-learned LJ parameters |
+| `nn_wall_profiles.png` | `nn_wall_profiles` | Neural network wall profiles |
+| `three_phase_comparison.png` | `train_three_phase` | Multi-phase training results |
+| `feature_ablation.png` | `feature_ablation` | Input feature comparison |
+
+---
+
+## Troubleshooting
+
+### "No module named cnfmt"
+
+Make sure you installed the package in editable mode from the repository root:
 
 ```bash
 cd cnfmt
-
-# 1. LJ Phase Diagram (generates 2 figures)
-python -m lj.phase_diagram
-
-# 2. Four Training Approaches (generates 1 figure)
-python scripts/fast_four_approaches.py
-
-# 3. Wall Profiles at Multiple η (generates 1 figure)
-python scripts/wall_profiles_multi_eta.py
-
-# 4. FMT Comparison with c(r) (generates 1 figure)
-python scripts/fmt_comprehensive_all_methods.py
-
-# 5. Validated 1D FMT (generates 1 figure)
-python solvers/fmt_1d_wbii_tensor.py
+pip install -e .
 ```
 
-### Figure Summary
+### JAX not using GPU
 
-| Script | Output File | Description |
-|--------|-------------|-------------|
-| `lj/phase_diagram.py` | `lj_phase_diagram_lutsko.png` | 4-panel: VLE, P(ρ), μ(ρ), f(ρ) |
-| `lj/phase_diagram.py` | `lj_phase_diagram_nn.png` | 6-panel: NN training, learned A,B |
-| `scripts/fast_four_approaches.py` | `four_approaches_comparison.png` | 9-panel training comparison |
-| `scripts/wall_profiles_multi_eta.py` | `wall_profiles.png` | 4-panel: η = 0.367, 0.393, 0.449, 0.492 |
-| `scripts/fmt_comprehensive_all_methods.py` | `fmt_comprehensive_all_methods.png` | 4-panel: profiles, c(r), ĉ(k) |
-| `solvers/fmt_1d_wbii_tensor.py` | `fmt_1d_wbii_tensor.png` | Tensor FMT vs Monte Carlo |
+Check your JAX backend:
 
-See **[SCRIPTS_GUIDE.md](SCRIPTS_GUIDE.md)** for complete documentation.
+```python
+import jax
+print(jax.devices())
+```
 
----
+If it shows only CPU devices, reinstall JAX with GPU support (see [Installation](#installation)).
 
-## Key Results
+### "float64 not supported" or precision errors
 
-### Contact Density at Hard Wall (η = 0.367)
+CNFMT requires 64-bit floating point. This is enabled automatically when you import the package. If you see precision-related errors, make sure to import `cnfmt` before other JAX operations:
 
-| Method | Contact ρ(R⁺)/ρ_bulk | % of MC | % of CS |
-|--------|---------------------|---------|---------|
-| Monte Carlo | 5.36 | 100% | 94% |
-| Carnahan-Starling | 5.73 | 107% | 100% |
-| **Rosenfeld FMT** | **5.84** | **109%** | 102% |
-| White Bear II | 5.07 | 95% | 89% |
-| Modified RSLT | 5.52 | 103% | 96% |
-| esFMT(1,-1) | 4.29 | 80% | 75% |
-| Gül et al. | 4.76 | 89% | 83% |
+```python
+import cnfmt  # This sets jax_enable_x64 = True
+```
 
-### LJ Critical Point Comparison
+### Slow first run
 
-| Method | T*_c | ρ*_c σ³ |
-|--------|------|---------|
-| Lutsko (A=1, B=0) | 1.28 | 0.31 |
-| Simulation (Johnson) | 1.31 | 0.31 |
-| Mean-field estimate | 1.35 | 0.33 |
+JAX compiles functions on first use (JIT compilation). The first run of any script will be slower than subsequent runs. This is normal.
 
-### Learned Parameters (CS EOS Training)
+### matplotlib display issues (headless server)
 
-At η = 0.3:
-- A ≈ 1.27
-- B ≈ -0.63
-- C ≈ -0.05 (near PY line)
+If running on a server without a display:
+
+```bash
+export MPLBACKEND=Agg
+python -m cnfmt.scripts.fast_four_approaches
+```
+
+Figures will still be saved to `outputs/` even without a display.
 
 ---
 
@@ -536,7 +403,7 @@ At η = 0.3:
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
@@ -545,12 +412,8 @@ MIT License — see [LICENSE](LICENSE) for details.
 ```bibtex
 @software{cnfmt2024,
   title={CNFMT: Conditional Neural Fundamental Measure Theory},
-  author={Your Name},
+  author={Tetsas, C.},
   year={2024},
-  url={https://github.com/your-repo/cnfmt}
+  url={https://github.com/username/cnfmt}
 }
 ```
-
----
-
-*For questions, issues, or contributions, please open an issue or pull request on GitHub.*
