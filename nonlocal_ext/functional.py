@@ -259,7 +259,7 @@ class NonlocalLutskoFunctional(eqx.Module):
         A, B = self.predict_parameters(rho_uniform)
 
         # In uniform system, A and B should be constant
-        return float(jnp.mean(A)), float(jnp.mean(B))
+        return jnp.mean(A), jnp.mean(B)
 
     def __repr__(self) -> str:
         return (f"NonlocalLutskoFunctional(\n"

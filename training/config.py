@@ -122,6 +122,13 @@ class TrainingConfig:
     dft_grad_eps: float = 0.01
     dft_n_grad_coords: int = 50
     
+    # Nonlocal constraint loss weights
+    weight_contact: float = 1.0
+    weight_noether: float = 0.1
+    weight_spt: float = 0.5
+    weight_positivity: float = 1.0
+    weight_oz_consistency: float = 0.5  # for future use
+
     # Checkpointing
     checkpoint_dir: str = "checkpoints"
     save_every: int = 100
