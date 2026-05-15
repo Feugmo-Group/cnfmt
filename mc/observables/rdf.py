@@ -206,3 +206,231 @@ class RDFAccumulator:
     def r(self) -> np.ndarray:
         """Bin centres."""
         return 0.5 * (self.bins[:-1] + self.bins[1:])
+
+
+# ── Species-resolved g_αβ(r) for binary mixtures ─────────────────────
+
+
+class MixtureRDFAccumulator:
+    """Accumulate species-resolved radial distribution functions g_αβ(r).
+
+    For a binary mixture with species labels 0 and 1, computes the three
+    independent partial RDFs:
+        g₀₀(r) — between particles of species 0
+        g₀₁(r) — cross correlation (species 0 with species 1)
+        g₁₁(r) — between particles of species 1
+
+    The normalisation uses the partial number densities ρ_α = N_α / V:
+
+        g_αβ(r) = V / (N_α N_β) * <Σᵢ∈α Σⱼ∈β,j≠i δ(r - rᵢⱼ)> / (4πr²Δr)
+
+    For the cross correlation (α ≠ β), both (i∈α, j∈β) and (i∈β, j∈α)
+    directions are counted and the result is divided by 2 (i.e., each
+    pair is counted once).
+
+    Parameters
+    ----------
+    n_bins : int
+        Number of histogram bins.
+    r_max : float
+        Maximum separation to accumulate (should be ≤ L/2).
+    n_species : int
+        Number of species (currently only 2 is supported).
+    """
+
+    def __init__(
+        self,
+        n_bins: int = 200,
+        r_max: float = 5.0,
+        n_species: int = 2,
+    ) -> None:
+        if n_species != 2:
+            raise ValueError("MixtureRDFAccumulator currently supports exactly 2 species.")
+        self.n_bins = n_bins
+        self.r_max = float(r_max)
+        self.n_species = n_species
+        self.bins = np.linspace(0.0, r_max, n_bins + 1)
+
+        # One histogram per species pair (α ≤ β)
+        self._hist = {
+            (0, 0): np.zeros(n_bins, dtype=np.float64),
+            (0, 1): np.zeros(n_bins, dtype=np.float64),
+            (1, 1): np.zeros(n_bins, dtype=np.float64),
+        }
+        self._n_frames = 0
+        # Running sums of partial counts (to compute mean ρ_α)
+        self._N_alpha_sum = np.zeros(n_species, dtype=np.float64)
+        self._box_length: float = 0.0
+
+    # ── Accumulation ──────────────────────────────────────────────────
+
+    def update(
+        self,
+        positions: np.ndarray,
+        species: np.ndarray,
+        box_length: float,
+    ) -> None:
+        """Add one configuration to the running histograms.
+
+        Parameters
+        ----------
+        positions : array-like, shape (N, 3)
+            Particle positions (NumPy or JAX array).
+        species : array-like, shape (N,) of int
+            Species labels for each particle (0 or 1).
+        box_length : float
+            Cubic box side length.
+        """
+        positions = np.asarray(positions, dtype=float)
+        species = np.asarray(species, dtype=int)
+        N = len(positions)
+        self._box_length = float(box_length)
+        self._n_frames += 1
+
+        # Partial counts
+        mask0 = (species == 0)
+        mask1 = (species == 1)
+        N0 = int(np.sum(mask0))
+        N1 = int(np.sum(mask1))
+        self._N_alpha_sum[0] += N0
+        self._N_alpha_sum[1] += N1
+
+        pos0 = positions[mask0]
+        pos1 = positions[mask1]
+
+        # g₀₀: all pairs within species 0
+        self._accumulate_pair(pos0, pos0, (0, 0), box_length, exclude_self=True)
+
+        # g₁₁: all pairs within species 1
+        self._accumulate_pair(pos1, pos1, (1, 1), box_length, exclude_self=True)
+
+        # g₀₁: cross-species pairs (order doesn't matter; count i<j only)
+        self._accumulate_pair(pos0, pos1, (0, 1), box_length, exclude_self=False)
+
+    def _accumulate_pair(
+        self,
+        pos_a: np.ndarray,
+        pos_b: np.ndarray,
+        pair: Tuple,
+        box_length: float,
+        exclude_self: bool,
+    ) -> None:
+        """Accumulate distances between particles in pos_a and pos_b.
+
+        If ``exclude_self=True`` (same-species pairs, pos_a is pos_b),
+        only i < j pairs are counted to avoid double counting and
+        self-interactions.
+        """
+        Na = len(pos_a)
+        Nb = len(pos_b)
+        if Na == 0 or Nb == 0:
+            return
+
+        hist = self._hist[pair]
+
+        if exclude_self:
+            # Same-species: count only i < j
+            for i in range(Na - 1):
+                dr = pos_b[i + 1:] - pos_a[i]          # (Nb-i-1, 3)
+                dr = dr - box_length * np.round(dr / box_length)
+                r = np.sqrt(np.sum(dr ** 2, axis=1))
+                counts, _ = np.histogram(r, bins=self.bins)
+                hist += counts
+        else:
+            # Cross-species: all (i, j) pairs with i∈A, j∈B
+            for i in range(Na):
+                dr = pos_b - pos_a[i]                   # (Nb, 3)
+                dr = dr - box_length * np.round(dr / box_length)
+                r = np.sqrt(np.sum(dr ** 2, axis=1))
+                counts, _ = np.histogram(r, bins=self.bins)
+                hist += counts
+
+    # ── Retrieval ─────────────────────────────────────────────────────
+
+    def get_gij(self, alpha: int, beta: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Return (r, g_αβ(r)) for species pair (alpha, beta).
+
+        Parameters
+        ----------
+        alpha : int
+            Species index (0 or 1).
+        beta : int
+            Species index (0 or 1).
+
+        Returns
+        -------
+        r : np.ndarray, shape (n_bins,)
+            Bin centres.
+        g_ab : np.ndarray, shape (n_bins,)
+            Partial radial distribution function g_αβ(r).
+        """
+        if self._n_frames == 0:
+            raise RuntimeError("No frames accumulated yet.")
+
+        alpha, beta = int(alpha), int(beta)
+        pair = (min(alpha, beta), max(alpha, beta))
+
+        raw = self._hist[pair].copy()
+        r_centres = 0.5 * (self.bins[:-1] + self.bins[1:])
+
+        V = self._box_length ** 3
+        N_alpha = self._N_alpha_sum[alpha] / self._n_frames   # mean N_alpha
+        N_beta = self._N_alpha_sum[beta] / self._n_frames     # mean N_beta
+
+        if N_alpha == 0 or N_beta == 0:
+            return r_centres, np.zeros(self.n_bins)
+
+        # Shell volume (exact spherical shell)
+        shell_vol = (4.0 / 3.0) * np.pi * (self.bins[1:] ** 3 - self.bins[:-1] ** 3)
+
+        if alpha == beta:
+            # Same-species: i<j pairs counted; effective N*(N-1)/2 normalization
+            # Histogram has (per frame) Σ_{i<j} count → normalize by N_alpha*(N_alpha-1)/2
+            # Standard route: norm = n_frames * (N_alpha/2) * (N_alpha*rho_alpha) * shell_vol
+            # which simplifies to n_frames * N_alpha*(N_alpha-1)/(2*V) * shell_vol
+            rho_alpha = N_alpha / V
+            norm = self._n_frames * (N_alpha / 2.0) * rho_alpha * shell_vol
+        else:
+            # Cross-species: all (i,j) pairs counted for i∈A, j∈B
+            # norm = n_frames * N_alpha * rho_beta * shell_vol
+            rho_beta = N_beta / V
+            norm = self._n_frames * N_alpha * rho_beta * shell_vol
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            g_ab = np.where(norm > 0, raw / norm, 0.0)
+
+        return r_centres, g_ab
+
+    def get_all(self) -> dict:
+        """Return all three partial g_αβ(r) functions.
+
+        Returns
+        -------
+        dict with keys '00', '01', '11', each mapping to (r, g_ab).
+        """
+        r00, g00 = self.get_gij(0, 0)
+        r01, g01 = self.get_gij(0, 1)
+        r11, g11 = self.get_gij(1, 1)
+        return {
+            "r": r00,       # shared r array
+            "g00": g00,
+            "g01": g01,
+            "g11": g11,
+        }
+
+    def reset(self) -> None:
+        """Clear all accumulated data."""
+        for key in self._hist:
+            self._hist[key][:] = 0.0
+        self._N_alpha_sum[:] = 0.0
+        self._n_frames = 0
+
+    @property
+    def n_frames(self) -> int:
+        """Number of accumulated configurations."""
+        return self._n_frames
+
+    @property
+    def r(self) -> np.ndarray:
+        """Bin centres."""
+        return 0.5 * (self.bins[:-1] + self.bins[1:])

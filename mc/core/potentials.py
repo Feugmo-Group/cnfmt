@@ -386,6 +386,163 @@ class LennardJones:
         )
 
 
+# ── Binary hard-sphere mixture ───────────────────────────────────────
+
+
+class HardSphereMixture:
+    """Binary hard-sphere mixture with additive (Lorentz-Berthelot) mixing rule.
+
+    Two species with diameters σ₁ and σ₂.  The cross-interaction diameter
+    follows the additive (Lorentz) rule:
+
+        σ₁₂ = (σ₁ + σ₂) / 2
+
+    Species labels are integers: 0 → diameter σ₁, 1 → diameter σ₂.
+
+    Parameters
+    ----------
+    sigma1 : float
+        Diameter of species 0 (default 1.0).
+    sigma2 : float
+        Diameter of species 1 (default 1.2).
+    x1 : float
+        Mole fraction of species 0 (informational only; not used in
+        overlap checks).
+
+    Notes
+    -----
+    Uses pure NumPy (no JAX) so it can be used inside GCMC or Gibbs
+    ensemble loops where particle counts change at runtime.
+    """
+
+    def __init__(
+        self,
+        sigma1: float = 1.0,
+        sigma2: float = 1.2,
+        x1: float = 0.5,
+    ) -> None:
+        self.sigma1 = float(sigma1)
+        self.sigma2 = float(sigma2)
+        self.x1 = float(x1)
+
+        # Precompute squared cross-interaction diameters for the three pairs
+        # (species_i, species_j) → σ_ij
+        self._sigma = {
+            (0, 0): sigma1,
+            (1, 1): sigma2,
+            (0, 1): (sigma1 + sigma2) / 2.0,
+            (1, 0): (sigma1 + sigma2) / 2.0,
+        }
+        self._sigma2 = {k: v * v for k, v in self._sigma.items()}
+
+    def sigma_ij(self, species_i: int, species_j: int) -> float:
+        """Cross-interaction diameter for species pair (i, j).
+
+        Parameters
+        ----------
+        species_i : int
+            Species of particle i (0 or 1).
+        species_j : int
+            Species of particle j (0 or 1).
+
+        Returns
+        -------
+        float
+            Diameter σ_ij.
+        """
+        return self._sigma[(int(species_i), int(species_j))]
+
+    def overlap(
+        self,
+        pos_i: np.ndarray,
+        species_i: int,
+        positions: np.ndarray,
+        species: np.ndarray,
+        i: int,
+        box_length: float,
+    ) -> bool:
+        """Check whether particle *i* at trial position *pos_i* overlaps any other.
+
+        Uses the species-dependent diameter σ_ij for each pair.
+        Particle *i* itself is excluded from the check.
+
+        Parameters
+        ----------
+        pos_i : np.ndarray, shape (3,)
+            Trial position of the particle being moved (or inserted).
+        species_i : int
+            Species label of the particle (0 or 1).
+        positions : np.ndarray, shape (N, 3)
+            Current positions of all particles.
+        species : np.ndarray, shape (N,) of int
+            Species labels for all particles.
+        i : int
+            Index of the particle being tested (excluded from check).
+            Pass ``i = -1`` (or any out-of-range index) for an insertion
+            where the particle is not yet in *positions*.
+        box_length : float
+            Cubic box side length.
+
+        Returns
+        -------
+        bool
+            ``True`` if *pos_i* overlaps any particle j ≠ i.
+        """
+        pos_i = np.asarray(pos_i, dtype=float)
+        positions = np.asarray(positions, dtype=float)
+        species = np.asarray(species, dtype=int)
+        species_i = int(species_i)
+
+        N = len(positions)
+        if N == 0:
+            return False
+
+        dr = positions - pos_i                               # (N, 3)
+        dr -= box_length * np.round(dr / box_length)
+        r2 = np.sum(dr ** 2, axis=1)                        # (N,)
+
+        for j in range(N):
+            if j == i:
+                continue
+            sij2 = self._sigma2[(species_i, int(species[j]))]
+            if r2[j] < sij2:
+                return True
+        return False
+
+    def pairwise_overlap(
+        self,
+        positions: np.ndarray,
+        species: np.ndarray,
+        box_length: float,
+    ) -> bool:
+        """O(N²) check: ``True`` if any pair of particles overlaps.
+
+        Intended for validation and initialisation only.
+
+        Parameters
+        ----------
+        positions : np.ndarray, shape (N, 3)
+        species : np.ndarray, shape (N,) of int
+        box_length : float
+
+        Returns
+        -------
+        bool
+        """
+        positions = np.asarray(positions, dtype=float)
+        species = np.asarray(species, dtype=int)
+        N = len(positions)
+        for i in range(N - 1):
+            for j in range(i + 1, N):
+                dr = positions[j] - positions[i]
+                dr -= box_length * np.round(dr / box_length)
+                r2 = float(np.dot(dr, dr))
+                sij2 = self._sigma2[(int(species[i]), int(species[j]))]
+                if r2 < sij2:
+                    return True
+        return False
+
+
 # ── WCA potential (purely repulsive) ──────────────────────────────────
 
 
