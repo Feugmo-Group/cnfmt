@@ -329,14 +329,12 @@ def compute_nonlocal_bulk_loss(functional, eta_values: Array,
     n_eta = len(eta_values)
     total_loss = 0.0
 
-    # Collect A, B at each eta for smoothness regularisation
-    A_vals = []
-    B_vals = []
+    # Collect (eta, A, B) for smoothness regularisation — avoid double evaluation
+    eta_AB = []
 
     for eta in eta_values:
         A, B = functional.bulk_parameters(eta)
-        A_vals.append(A)
-        B_vals.append(B)
+        eta_AB.append((eta, A, B))
 
         # ── Equation of state loss ──
         Z_lut = BulkThermodynamics.Z_lutsko(eta, A, B)
@@ -348,38 +346,27 @@ def compute_nonlocal_bulk_loss(functional, eta_values: Array,
         mu_cs = BulkThermodynamics.mu_ex_CS(eta)
         loss_mu = ((mu_lut - mu_cs) / (jnp.abs(mu_cs) + 0.1))**2
 
-        # ── Compressibility loss (log scale) ──
-        chi_lut = BulkThermodynamics.chi_T_bulk_lutsko(eta, A, B)
-        chi_RF = BulkThermodynamics.chi_T_RF(eta)
-        log_chi_lut = jnp.log(jnp.maximum(chi_lut, 1e-10))
-        log_chi_RF = jnp.log(jnp.maximum(chi_RF, 1e-10))
-        loss_chi = (log_chi_lut - log_chi_RF)**2
+        # NOTE: chi_T loss is intentionally excluded. The Lutsko chi_T formula
+        # (Eq. 26) with chi_RF as target wants C=0 (PY), while Z and mu losses
+        # want C=-3 (CS). This conflict prevents convergence. Z and mu together
+        # uniquely constrain C=-3 without the compressibility term.
 
-        total_loss += (config.weight_Z * loss_Z +
-                       config.weight_mu * loss_mu +
-                       config.weight_chi * loss_chi)
+        total_loss += config.weight_Z * loss_Z + config.weight_mu * loss_mu
 
     total_loss /= n_eta
 
     # ── Smoothness regularisation on A(eta), B(eta) curve ──
-    eta_sorted = jnp.sort(jnp.array(eta_values))
+    # Sort by eta and use already-computed A, B values (no duplicate forward passes)
+    eta_AB.sort(key=lambda t: float(t[0]))
     smooth_loss = 0.0
 
-    # Re-evaluate at sorted etas for consistent finite differences
-    A_sorted = []
-    B_sorted = []
-    for eta in eta_sorted:
-        A, B = functional.bulk_parameters(float(eta))
-        A_sorted.append(A)
-        B_sorted.append(B)
-
-    for i in range(len(eta_sorted) - 1):
-        deta = float(eta_sorted[i + 1] - eta_sorted[i])
-        dA_deta = (A_sorted[i + 1] - A_sorted[i]) / (deta + 1e-6)
-        dB_deta = (B_sorted[i + 1] - B_sorted[i]) / (deta + 1e-6)
+    for i in range(len(eta_AB) - 1):
+        deta = eta_AB[i + 1][0] - eta_AB[i][0] + 1e-10  # keep as JAX array
+        dA_deta = (eta_AB[i + 1][1] - eta_AB[i][1]) / deta
+        dB_deta = (eta_AB[i + 1][2] - eta_AB[i][2]) / deta
         smooth_loss += dA_deta**2 + dB_deta**2
 
-    smooth_loss /= max(len(eta_sorted) - 1, 1)
+    smooth_loss /= max(len(eta_AB) - 1, 1)
     total_loss += config.weight_smooth * smooth_loss
 
     return total_loss

@@ -46,9 +46,13 @@ from jaxtyping import Array
 
 jax.config.update("jax_enable_x64", True)
 
-# Small regularization to prevent division by zero at points where
-# 1 - rho * c_hat_2(k) vanishes (spinodal instability).
-_EPS = 1e-12
+# Minimum value of the OZ denominator (1 - ρ c_hat_2(k)).
+# For a stable hard-sphere fluid this quantity is strictly positive, but
+# noisy c2 from autodiff during early training can push it negative,
+# causing S(k) → ±∞ and catastrophic loss values (~1e6).
+# Clamping to 0.05 caps S(k) ≤ 20, which is physically generous
+# (hard-sphere S(k) peaks at ~3 near freezing) while being JAX-differentiable.
+_DENOM_MIN = 0.05
 
 
 def solve_oz_fourier(c2_k: Array, rho_bulk: float) -> Array:
@@ -89,13 +93,12 @@ def solve_oz_fourier(c2_k: Array, rho_bulk: float) -> Array:
     states the denominator is strictly positive for all k.
     """
     denominator = 1.0 - rho_bulk * c2_k
-    # Regularize: keep the sign but clamp the magnitude away from zero
-    denominator_safe = jnp.where(
-        jnp.abs(denominator) < _EPS,
-        jnp.sign(denominator) * _EPS,
-        denominator,
-    )
-    h_k = c2_k / denominator_safe
+    # For a stable hard-sphere fluid, Re(denominator) > 0 always.
+    # Clamp the real part from below to prevent S(k) blowup when c2 is
+    # noisy during early training (negative denominator → |S(k)| → ∞).
+    denom_real = jnp.maximum(jnp.real(denominator), _DENOM_MIN)
+    denom_safe = denom_real + 1j * jnp.imag(denominator)
+    h_k = c2_k / denom_safe
     return h_k
 
 
@@ -130,12 +133,9 @@ def compute_structure_factor(c2_k: Array, rho_bulk: float) -> Array:
         imaginary part is discarded).
     """
     denominator = 1.0 - rho_bulk * c2_k
-    denominator_safe = jnp.where(
-        jnp.abs(denominator) < _EPS,
-        jnp.sign(denominator) * _EPS,
-        denominator,
-    )
-    S_k = 1.0 / denominator_safe
+    denom_real = jnp.maximum(jnp.real(denominator), _DENOM_MIN)
+    denom_safe = denom_real + 1j * jnp.imag(denominator)
+    S_k = 1.0 / denom_safe
     return jnp.real(S_k)
 
 

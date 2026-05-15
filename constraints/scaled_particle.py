@@ -102,8 +102,11 @@ def low_density_limit_loss(
         # At low η this should vanish.  We use μ_ex as proxy since
         # F_exc/N ~ μ_ex at leading order.
         mu_ex = BulkThermodynamics.mu_ex_bulk_lutsko(eta, A, B)
-        # Scale-free: divide by η so the loss doesn't trivially vanish
-        loss += (mu_ex / (eta + 1e-12)) ** 2
+        # μ_ex → 0 as η → 0 (excess chemical potential vanishes at zero density).
+        # NOTE: μ_ex/η → 8 always (exact second virial coefficient — a physics
+        # constant, not something to minimize). Using (μ_ex/η)² gives a constant
+        # ~64 loss with near-zero gradient, masking all other training signal.
+        loss += mu_ex ** 2
 
         # ── Compressibility factor → 1 ──
         Z = BulkThermodynamics.Z_lutsko(eta, A, B)
