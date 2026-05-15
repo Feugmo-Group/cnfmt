@@ -168,7 +168,7 @@ class UniformLJFluid:
     
     def get_AB(self, eta):
         if self.nn is not None:
-            A, B = self.nn.from_eta(float(eta))
+            A, B = self.nn(float(eta), float(self.T_star))
             return float(A), float(B)
         return self.A_fixed, self.B_fixed
     
@@ -292,7 +292,26 @@ class LJPhaseDiagram:
 # NEURAL NETWORK
 # =============================================================================
 
-from neural.network import ConditionalNetwork
+class ABNetwork(eqx.Module):
+    """2-input network: (η, T*) → (A, B)."""
+    layers: list
+
+    def __init__(self, hidden=[32, 32], key=None):
+        if key is None:
+            key = jax.random.PRNGKey(42)
+        keys = jax.random.split(key, len(hidden) + 1)
+        dims = [2] + hidden + [2]
+        self.layers = [eqx.nn.Linear(d_in, d_out, key=k)
+                       for d_in, d_out, k in zip(dims[:-1], dims[1:], keys)]
+
+    def __call__(self, eta, T_star):
+        x = jnp.array([eta / 0.5, (T_star - 1.0) / 0.3])
+        for layer in self.layers[:-1]:
+            x = jnp.tanh(layer(x))
+        out = self.layers[-1](x)
+        A = 0.8 + 0.4 * jax.nn.sigmoid(out[0])   # A ∈ [0.8, 1.2]
+        B = -0.2 + 0.4 * jax.nn.sigmoid(out[1])   # B ∈ [-0.2, 0.2]
+        return A, B
 
 
 def train_nn(network, potential, ref_coex, n_epochs=300, lr=0.01):
@@ -323,8 +342,8 @@ def train_nn(network, potential, ref_coex, n_epochs=300, lr=0.01):
         eta_v = (PI / 6) * rv * d_T**3
         eta_l = (PI / 6) * rl * d_T**3
         
-        A_v, B_v = net.from_eta(eta_v)
-        A_l, B_l = net.from_eta(eta_l)
+        A_v, B_v = net(eta_v, T)
+        A_l, B_l = net(eta_l, T)
         
         mu_v = jnp.log(rv * sigma**3) + mu_ex_lutsko(eta_v, A_v, B_v) + a * rv / kT
         mu_l = jnp.log(rl * sigma**3) + mu_ex_lutsko(eta_l, A_l, B_l) + a * rl / kT
@@ -499,28 +518,32 @@ def plot_nn(network, losses, potential, ref_coex):
     eta_range = np.linspace(0.01, 0.5, 100)
     
     ax = fig.add_subplot(gs[0, 2])
-    A_vals = [float(network.from_eta(e)[0]) for e in eta_range]
-    ax.plot(eta_range, A_vals, color='blue', lw=2, label='A(η)')
+    for T, c in [(0.8, 'blue'), (1.0, 'green'), (1.2, 'red')]:
+        ax.plot(eta_range, [float(network(e, T)[0]) for e in eta_range],
+                color=c, lw=2, label=f'T*={T}')
     ax.axhline(1.0, color='gray', ls='--', lw=1.5, label='Lutsko A=1')
     ax.set_xlabel('η')
-    ax.set_ylabel('A(η)')
+    ax.set_ylabel('A(η, T*)')
     ax.set_title('(c) Learned A', fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
 
     ax = fig.add_subplot(gs[1, 0])
-    B_vals = [float(network.from_eta(e)[1]) for e in eta_range]
-    ax.plot(eta_range, B_vals, color='blue', lw=2, label='B(η)')
+    for T, c in [(0.8, 'blue'), (1.0, 'green'), (1.2, 'red')]:
+        ax.plot(eta_range, [float(network(e, T)[1]) for e in eta_range],
+                color=c, lw=2, label=f'T*={T}')
     ax.axhline(0.0, color='gray', ls='--', lw=1.5, label='Lutsko B=0')
     ax.set_xlabel('η')
-    ax.set_ylabel('B(η)')
+    ax.set_ylabel('B(η, T*)')
     ax.set_title('(d) Learned B', fontweight='bold')
     ax.legend(fontsize=9)
     ax.grid(True, alpha=0.3)
 
     ax = fig.add_subplot(gs[1, 1])
-    D = [8*float(network.from_eta(e)[0]) + 2*float(network.from_eta(e)[1]) - 9 for e in eta_range]
-    ax.plot(eta_range, D, color='blue', lw=2, label='Δ(η)')
+    for T, c in [(0.8, 'blue'), (1.0, 'green'), (1.2, 'red')]:
+        D = [8*float(network(e, T)[0]) + 2*float(network(e, T)[1]) - 9
+             for e in eta_range]
+        ax.plot(eta_range, D, color=c, lw=2, label=f'T*={T}')
     ax.axhline(0, color='gray', ls='--', lw=1.5, label='PY (Δ=0)')
     ax.axhline(-1, color='orange', ls=':', lw=1.5, label='Lutsko (Δ=-1)')
     ax.set_xlabel('η')
@@ -531,12 +554,13 @@ def plot_nn(network, losses, potential, ref_coex):
 
     ax = fig.add_subplot(gs[1, 2])
     eta_g = np.linspace(0.01, 0.5, 50)
-    A_g = np.array([float(network.from_eta(e)[0]) for e in eta_g])
-    ax.plot(eta_g, A_g, 'b-', lw=2)
+    T_g   = np.linspace(0.7, 1.3, 50)
+    A_g = np.array([[float(network(e, t)[0]) for e in eta_g] for t in T_g])
+    cs = ax.contourf(eta_g, T_g, A_g, levels=20, cmap='RdYlBu_r')
+    plt.colorbar(cs, ax=ax, label='A')
     ax.set_xlabel('η')
-    ax.set_ylabel('A(η)')
-    ax.set_title('(f) A(η) Profile', fontweight='bold')
-    ax.grid(True, alpha=0.3)
+    ax.set_ylabel('T*')
+    ax.set_title('(f) A(η, T*) Heatmap', fontweight='bold')
     
     plt.suptitle('Neural Network A(η, T*), B(η, T*)', fontsize=16, fontweight='bold')
     plt.savefig(OUTPUT_DIR / 'lj_phase_diagram_nn.png', dpi=300, bbox_inches='tight')
@@ -574,7 +598,7 @@ def main():
     
     # NN training
     print("\n--- Neural Network ---")
-    network = ConditionalNetwork(jax.random.PRNGKey(42))
+    network = ABNetwork(hidden=[32, 32], key=jax.random.PRNGKey(42))
     network, losses = train_nn(network, potential, coex, n_epochs=300, lr=0.01)
     plot_nn(network, losses, potential, coex)
     
